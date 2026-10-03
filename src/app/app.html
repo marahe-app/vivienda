@@ -1,0 +1,227 @@
+<header class="barra">
+  <div class="cartera" [class.rojo]="cartera().saldo < 0" [title]="cartera().ayuda">
+    <div class="fila">
+      <span>Cartera de vivienda<app-fuente [ids]="fuentesCartera" /></span>
+      <b>{{ cartera().saldoTexto }}</b>
+    </div>
+    <div class="pista">
+      <i [style.width.%]="cartera().barra" [style.background]="cartera().color"></i>
+    </div>
+    <small
+      >Entran {{ cartera().presupuesto }} al mes · se gastan {{ cartera().gastoMes }} · IPC
+      {{ cartera().ipc }}</small
+    >
+    <div class="fila acciones">
+      <button
+        (click)="sim.imprimir()"
+        title="Crea 1.000 M€ de la nada. Sube la inflación 0,08 puntos durante dos años y resta confianza a los inversores."
+      >
+        Imprimir 1.000 M€
+      </button>
+      <small>{{ cartera().impreso }}</small>
+    </div>
+  </div>
+  <div class="marca">
+    <h1>Vivienda</h1>
+    <span>Simulador del problema de la vivienda en España</span>
+  </div>
+  <div class="reloj">
+    <b>{{ fecha() }}</b>
+    <span>{{ tiempo() }}</span>
+  </div>
+  <div class="controles">
+    <div class="conmutador" role="group" aria-label="Velocidad">
+      <button [class.activo]="sim.velocidad() === 0" (click)="sim.pausar()" title="Pausa">
+        ❚❚
+      </button>
+      @for (v of velocidades; track v) {
+        <button
+          [class.activo]="sim.velocidad() === v"
+          (click)="velocidad(v)"
+          [title]="v + ' semanas por segundo'"
+        >
+          {{ v }}×
+        </button>
+      }
+    </div>
+    <button (click)="sim.avanzarUna()">+1 semana</button>
+    <label
+      ><input
+        type="checkbox"
+        [checked]="sim.pausarCadaMes()"
+        (change)="sim.pausarCadaMes.set($any($event.target).checked)"
+      />
+      Pausar cada mes</label
+    >
+    <app-partidas (cargada)="finVisto.set(false)" />
+    <button class="discreto" (click)="reiniciar()">Reiniciar</button>
+  </div>
+</header>
+
+@if (sim.estado().fin; as fin) {
+  @if (!finVisto()) {
+    <div class="fin" [class.victoria]="fin === 'victoria'">
+      <div>
+        <strong>{{ fin === 'victoria' ? 'Objetivo conseguido' : 'El gobierno ha caído' }}</strong>
+        <span>
+          {{
+            fin === 'victoria'
+              ? 'Has cumplido las tres condiciones en ' +
+                tiempo() +
+                ', con una postura «' +
+                sim.postura().etiqueta +
+                '».'
+              : 'La tensión social ha llegado al límite en ' +
+                tiempo() +
+                '. Tu postura: «' +
+                sim.postura().etiqueta +
+                '».'
+          }}
+        </span>
+      </div>
+      <button (click)="finVisto.set(true)">Seguir jugando</button>
+      <button (click)="reiniciar()">Nueva partida</button>
+    </div>
+  }
+}
+
+<main>
+  <section class="col">
+    <div class="panel"><app-objetivos /></div>
+
+    <div class="panel">
+      <app-escena-clima [tension]="sim.estado().tension" />
+      <h2>Clima<app-fuente [ids]="fuenteResultado" /></h2>
+      @for (m of clima(); track m.nombre) {
+        <div class="medidor" [title]="m.ayuda">
+          <header>
+            <span>{{ m.nombre }}<app-fuente [ids]="m.fuentes" /></span><b>{{ m.texto }}</b>
+          </header>
+          <div class="pista"><i [style.width.%]="m.valor" [style.background]="m.color"></i></div>
+          <span class="tendencia" [class]="m.tendencia.tono">{{ m.tendencia.texto }}</span>
+        </div>
+      }
+      <small class="presiones">{{ presiones() }}</small>
+    </div>
+
+    <div class="panel">
+      <h2>Esta semana</h2>
+      <dl>
+        @for (f of semana().filas; track f.nombre) {
+          <div [class]="f.tono ?? ''">
+            <dt>
+              {{ f.nombre }}<app-fuente [ids]="f.fuentes" /><small>{{ f.nota }}</small>
+            </dt>
+            <dd>{{ f.valor }}</dd>
+            <app-mini-serie
+              [valores]="f.serie"
+              [semanas]="semana().semanas"
+              [formato]="f.fmt"
+              [bueno]="f.bueno"
+              [unidad]="f.unidad"
+            />
+          </div>
+        }
+      </dl>
+      <h2 class="sub">Precios, rentas e impuestos</h2>
+      <dl>
+        @for (f of semana().precios; track f.nombre) {
+          <div>
+            <dt>
+              {{ f.nombre }}<app-fuente [ids]="f.fuentes" /><small>{{ f.nota }}</small>
+            </dt>
+            <dd>{{ f.valor }}</dd>
+            <app-mini-serie
+              [valores]="f.serie"
+              [semanas]="semana().semanas"
+              [formato]="f.fmt"
+              [bueno]="f.bueno"
+              [unidad]="f.unidad"
+            />
+          </div>
+        }
+      </dl>
+    </div>
+  </section>
+
+  <section class="col">
+    <div class="panel">
+      <h2>Presión de vivienda</h2>
+      <app-mapa />
+    </div>
+    <div class="panel"><app-tarta /></div>
+    <div class="panel">
+      <h2>Ciudades</h2>
+      <div class="desplaza">
+        <table>
+          <thead>
+            <tr>
+              @for (c of columnas; track c.titulo) {
+                <th>
+                  {{ c.titulo }}
+                  @if (c.fuentes.length) {
+                    <app-fuente [ids]="c.fuentes" />
+                  }
+                </th>
+              }
+            </tr>
+          </thead>
+          <tbody>
+            @for (c of tabla(); track c.id) {
+              <tr
+                [class.sel]="sim.ciudadSel() === c.id"
+                [class.principal]="c.principal"
+                (click)="sim.ciudadSel.set(c.id)"
+              >
+                <td>
+                  {{ c.nombre }}
+                  @if (c.principal) {
+                    <small
+                      class="estrella"
+                      title="Gran área urbana: pesa doble en la tensión social"
+                    >
+                      ★</small
+                    >
+                  }
+                </td>
+                <td><i class="muestra" [style.background]="c.color"></i>{{ c.presion }}</td>
+                <td>{{ c.alquiler }}</td>
+                <td>{{ c.crecAlq }}</td>
+                <td>{{ c.precio }}</td>
+                <td>{{ c.anios }}</td>
+                <td>{{ c.espera }}</td>
+                <td>{{ c.oferta }}</td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <section class="col">
+    <div class="panel lateral">
+      <div class="conmutador ancho" role="tablist">
+        <button
+          role="tab"
+          [class.activo]="pestana() === 'decretos'"
+          (click)="pestana.set('decretos')"
+        >
+          Leyes
+        </button>
+        <button
+          role="tab"
+          [class.activo]="pestana() === 'factores'"
+          (click)="pestana.set('factores')"
+        >
+          Factores del modelo
+        </button>
+      </div>
+      @if (pestana() === 'decretos') {
+        <app-decretos />
+      } @else {
+        <app-factores />
+      }
+    </div>
+  </section>
+</main>
