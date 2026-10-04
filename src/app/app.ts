@@ -3,11 +3,13 @@ import type { FuenteId } from './sim/datos/fuentes';
 import { PARAMETROS as P } from './sim/datos/parametros';
 import { hogares, presion, suma } from './sim/motor/indicadores';
 import { SimService, VELOCIDADES } from './sim/sim.service';
+import type { PuntoHistorial } from './sim/tipos';
 import { Decretos } from './ui/decretos';
 import { EscenaClima } from './ui/escena-clima';
 import { Factores } from './ui/factores';
 import { colorCalor, compacto, dec, eur, num, pct, tendencia, type Unidad } from './ui/formato';
 import { FuenteIcono } from './ui/fuente';
+import { hitosDecretos } from './ui/hitos';
 import { Mapa } from './ui/mapa';
 import { MiniSerie } from './ui/mini-serie';
 import { Objetivos } from './ui/objetivos';
@@ -15,6 +17,8 @@ import { Partidas } from './ui/partidas';
 import { Tarta } from './ui/tarta';
 
 const meur = (v: number) => num(v) + ' M€';
+/** Lienzo del minigráfico de presión de cada ciudad. */
+const CHISPA = { w: 60, h: 14 };
 
 @Component({
   imports: [
@@ -278,12 +282,26 @@ export class App {
     return `Presión media del país ${Math.round(p.ponderada * 100)} · grandes ciudades ${Math.round(p.principales * 100)}. La tensión sigue a la mayor de las dos.`;
   });
 
-  protected readonly tabla = computed(() =>
-    this.sim
+  /** Decretos sobre los minigráficos de presión de la tabla. */
+  protected readonly hitos = computed(() => {
+    const e = this.sim.estado();
+    return hitosDecretos(
+      e.decretosPromulgados,
+      e.historial.map((p) => p.semana),
+      CHISPA.w,
+    ).map((h) => h.x);
+  });
+
+  protected readonly tabla = computed(() => {
+    const hist = this.sim.estado().historial;
+    // Con el historial largo basta una muestra de cada pocas semanas.
+    const paso = Math.ceil(hist.length / 80);
+    return this.sim
       .estado()
-      .ciudades.map((c) => {
+      .ciudades.map((c, k) => {
         const p = presion(c);
         return {
+          evolucion: this.chispa(hist, k, paso),
           id: c.id,
           nombre: c.nombre,
           principal: c.principal,
@@ -298,8 +316,34 @@ export class App {
           oferta: compacto(suma(c, 'ofAlquiler')),
         };
       })
-      .sort((a, b) => b.orden - a.orden),
-  );
+      .sort((a, b) => b.orden - a.orden);
+  });
+
+  /** Línea de la presión de una ciudad desde el inicio: verde si ha bajado, roja si ha subido. */
+  private chispa(hist: PuntoHistorial[], k: number, paso: number) {
+    const pts: [number, number][] = [];
+    hist.forEach((h, i) => {
+      // Las partidas antiguas no guardan la presión por ciudad.
+      const v = h.presiones?.[k];
+      if (v !== undefined && (i % paso === 0 || i === hist.length - 1)) pts.push([i, v]);
+    });
+    if (pts.length < 2) return { d: '', color: 'var(--tinta-3)', ayuda: '' };
+    const vs = pts.map(([, v]) => v);
+    // Con un rango mínimo de 5 puntos, una ciudad estable se ve plana y no como ruido ampliado.
+    const medio = (Math.min(...vs) + Math.max(...vs)) / 2;
+    const rango = Math.max(0.05, Math.max(...vs) - Math.min(...vs));
+    const y = (v: number) => 1 + (CHISPA.h - 2) * (0.5 - (v - medio) / rango);
+    const x = (i: number) => (i / (hist.length - 1)) * CHISPA.w;
+    const inicio = Math.round(vs[0] * 100);
+    const actual = Math.round(vs[vs.length - 1] * 100);
+    return {
+      d: pts
+        .map(([i, v], n) => (n ? 'L' : 'M') + x(i).toFixed(1) + ' ' + y(v).toFixed(1))
+        .join(' '),
+      color: actual > inicio ? 'var(--mal)' : actual < inicio ? 'var(--bien)' : 'var(--tinta-3)',
+      ayuda: `Presión: ${inicio} al inicio, ${actual} ahora`,
+    };
+  }
 
   private variacion(v: number, conTexto = true): string {
     return (v >= 0 ? '+' : '−') + pct(Math.abs(v)) + (conTexto ? ' al año' : '');

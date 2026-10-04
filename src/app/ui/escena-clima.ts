@@ -74,6 +74,13 @@ const NUBES = [
 ];
 const NUBES_NIVEL = [2, 4, 5, 3];
 
+/** Estrellas [x, y, radio] que asoman de noche. */
+const ESTRELLAS = Array.from({ length: 22 }, (_, i) => [
+  6 + ((i * 53) % 308),
+  3 + ((i * 29) % 34),
+  i % 4 === 0 ? 0.9 : 0.55,
+]);
+
 const ROPA = ['#c9d2da', '#8fa3b5', '#d9b38c', '#c58a94', '#8fb39a', '#e0c56e', '#a99bd6'];
 const PIEL = ['#f0c9a4', '#d9a57c', '#a8744f', '#7a5238'];
 /** Gente en la calle: siempre en el mismo sitio, cada nivel suma más. */
@@ -115,6 +122,7 @@ const NIVELES = ['calma', 'malestar', 'protestas', 'estallido'] as const;
     <svg
       [attr.viewBox]="'0 0 ' + w + ' ' + h"
       [class]="nombre()"
+      [class.corre]="corre()"
       role="img"
       [attr.aria-label]="'Clima social: ' + nombre()"
     >
@@ -127,6 +135,10 @@ const NIVELES = ['calma', 'malestar', 'protestas', 'estallido'] as const;
           <stop offset="0" stop-color="#fff3c4" stop-opacity="0.9" />
           <stop offset="1" stop-color="#fff3c4" stop-opacity="0" />
         </radialGradient>
+        <linearGradient id="ec-ocaso" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stop-color="#ff9a4a" stop-opacity="0" />
+          <stop offset="1" stop-color="#ff8a3c" stop-opacity="0.9" />
+        </linearGradient>
         <radialGradient id="ec-halo">
           <stop offset="0" stop-color="#ffd98a" stop-opacity="0.75" />
           <stop offset="1" stop-color="#ffd98a" stop-opacity="0" />
@@ -138,12 +150,12 @@ const NIVELES = ['calma', 'malestar', 'protestas', 'estallido'] as const;
       </defs>
 
       <rect fill="url(#ec-cielo)" [attr.width]="w" [attr.height]="h" />
-      @if (nivel() < 2) {
+      <g class="orbita">
         <g class="sol">
-          <circle cx="270" cy="24" r="26" fill="url(#ec-sol)" />
-          <circle cx="270" cy="24" r="9" fill="#ffe08a" />
+          <circle cx="160" cy="22" r="26" fill="url(#ec-sol)" />
+          <circle cx="160" cy="22" r="9" fill="#ffe08a" />
         </g>
-      }
+      </g>
       @for (n of nubes(); track $index) {
         <g
           class="nube"
@@ -155,26 +167,48 @@ const NIVELES = ['calma', 'malestar', 'protestas', 'estallido'] as const;
         </g>
       }
 
-      <path class="fondo" [attr.d]="fondo" />
-      <path class="antenas" [attr.d]="antenas" />
-      <path class="edificios" [attr.d]="silueta" />
-      <path class="cristales" [attr.d]="cristales" />
+      <rect
+        class="ocaso"
+        y="10"
+        [attr.width]="w"
+        [attr.height]="suelo - 10"
+        fill="url(#ec-ocaso)"
+      />
+      <rect class="noche" [attr.width]="w" [attr.height]="h" />
+      <g class="estrellas">
+        @for (e of estrellas; track $index) {
+          <circle [attr.cx]="e[0]" [attr.cy]="e[1]" [attr.r]="e[2]" />
+        }
+      </g>
+      <g class="orbita nocturna">
+        <path d="M160 15 A7 7 0 1 0 165 27 A7.5 7.5 0 0 1 160 15 Z" fill="#e9edf5" />
+      </g>
+
+      <!-- Lo que no da luz se oscurece de noche; ventanas, escaparates, farolas y hogueras quedan fuera. -->
+      <g class="oscurece">
+        <path class="fondo" [attr.d]="fondo" />
+        <path class="antenas" [attr.d]="antenas" />
+        <path class="edificios" [attr.d]="silueta" />
+        <path class="cristales" [attr.d]="cristales" />
+      </g>
       <path class="luces" [attr.d]="luces" />
       <path class="escaparates" [attr.d]="escaparates" />
-      <path class="persianas" [attr.d]="persianas" />
-      <path class="toldos" [attr.d]="toldos" />
+      <g class="oscurece">
+        <path class="persianas" [attr.d]="persianas" />
+        <path class="toldos" [attr.d]="toldos" />
 
-      <rect class="acera" [attr.y]="suelo" [attr.width]="w" height="7" />
-      <rect class="calzada" [attr.y]="suelo + 7" [attr.width]="w" [attr.height]="h - suelo - 7" />
-      <path class="carril" [attr.d]="'M0 ' + (h - 3) + ' H' + w" />
+        <rect class="acera" [attr.y]="suelo" [attr.width]="w" height="7" />
+        <rect class="calzada" [attr.y]="suelo + 7" [attr.width]="w" [attr.height]="h - suelo - 7" />
+        <path class="carril" [attr.d]="'M0 ' + (h - 3) + ' H' + w" />
 
-      @for (x of arboles; track x) {
-        <g class="arbol" [attr.transform]="'translate(' + x + ' ' + (suelo + 4) + ')'">
-          <rect class="tronco" x="-1" y="-12" width="2" height="12" />
-          <circle class="copa" cy="-17" r="8" />
-          <circle class="copa clara" cx="-3" cy="-19.5" r="4.5" />
-        </g>
-      }
+        @for (x of arboles; track x) {
+          <g class="arbol" [attr.transform]="'translate(' + x + ' ' + (suelo + 4) + ')'">
+            <rect class="tronco" x="-1" y="-12" width="2" height="12" />
+            <circle class="copa" cy="-17" r="8" />
+            <circle class="copa clara" cx="-3" cy="-19.5" r="4.5" />
+          </g>
+        }
+      </g>
       @for (x of farolas; track x) {
         <g [attr.transform]="'translate(' + x + ' ' + (suelo + 5) + ')'">
           <circle class="halo" cx="6" cy="-29" r="13" fill="url(#ec-halo)" />
@@ -202,57 +236,59 @@ const NIVELES = ['calma', 'malestar', 'protestas', 'estallido'] as const;
           </g>
         }
       }
-      @if (nivel() >= 2) {
-        <g class="furgon" transform="translate(284 106)">
-          <rect class="sirena a" x="11" y="-17.5" width="4.5" height="2.5" rx="1" />
-          <rect class="sirena b" x="15.5" y="-17.5" width="4.5" height="2.5" rx="1" />
-          <rect class="chapa" y="-15" width="32" height="12" rx="2" />
-          <path class="luna" d="M2 -13 h7 v4 h-8 Z M12 -13 h5 v4 h-5 Z M19 -13 h5 v4 h-5 Z" />
-          <rect class="franja" y="-7.5" width="32" height="1.5" />
-          <circle class="rueda" cx="7" cy="-2.5" r="3" />
-          <circle class="rueda" cx="25" cy="-2.5" r="3" />
-        </g>
-      }
-      @if (nivel() === 3) {
-        @for (x of antidisturbios; track x) {
-          <g class="agente" [attr.transform]="'translate(' + x + ' 108)'">
-            <path class="piernas" d="M-1.1 0v-4.5M1.1 0v-4.5" />
-            <rect x="-2.4" y="-10.5" width="4.8" height="6.8" rx="1.5" />
-            <circle cy="-12.6" r="2.3" />
-            <rect class="escudo" x="-5.5" y="-11" width="4" height="10" rx="1" />
+      <g class="oscurece">
+        @if (nivel() >= 2) {
+          <g class="furgon" transform="translate(284 106)">
+            <rect class="sirena a" x="11" y="-17.5" width="4.5" height="2.5" rx="1" />
+            <rect class="sirena b" x="15.5" y="-17.5" width="4.5" height="2.5" rx="1" />
+            <rect class="chapa" y="-15" width="32" height="12" rx="2" />
+            <path class="luna" d="M2 -13 h7 v4 h-8 Z M12 -13 h5 v4 h-5 Z M19 -13 h5 v4 h-5 Z" />
+            <rect class="franja" y="-7.5" width="32" height="1.5" />
+            <circle class="rueda" cx="7" cy="-2.5" r="3" />
+            <circle class="rueda" cx="25" cy="-2.5" r="3" />
           </g>
         }
-      }
-
-      <g class="gente">
-        @for (p of gente(); track p.i) {
-          <g [attr.transform]="p.transform">
-            <g class="cuerpo" [style.animation-delay]="p.retardo">
-              @if (p.pancarta && nivel() >= 1) {
-                <line class="palo" x1="3.2" y1="-9" x2="3.2" y2="-21" />
-                <rect class="pancarta" x="-1.5" y="-26.5" width="9.5" height="6" rx="0.8" />
-                <path class="letras" d="M0 -24.6h6.5M0 -22.6h4.5" />
-              }
-              @if (p.brazo && nivel() >= 2) {
-                <path class="brazo" d="M-1.6 -9 l-2.6 -5.2" [attr.stroke]="p.ropa" />
-              }
+        @if (nivel() === 3) {
+          @for (x of antidisturbios; track x) {
+            <g class="agente" [attr.transform]="'translate(' + x + ' 108)'">
               <path class="piernas" d="M-1.1 0v-4.5M1.1 0v-4.5" />
-              <rect x="-2.3" y="-10.5" width="4.6" height="6.8" rx="1.7" [attr.fill]="p.ropa" />
-              <circle cy="-12.6" r="2" [attr.fill]="p.piel" />
+              <rect x="-2.4" y="-10.5" width="4.8" height="6.8" rx="1.5" />
+              <circle cy="-12.6" r="2.3" />
+              <rect class="escudo" x="-5.5" y="-11" width="4" height="10" rx="1" />
             </g>
+          }
+        }
+
+        <g class="gente">
+          @for (p of gente(); track p.i) {
+            <g [attr.transform]="p.transform">
+              <g class="cuerpo" [style.animation-delay]="p.retardo">
+                @if (p.pancarta && nivel() >= 1) {
+                  <line class="palo" x1="3.2" y1="-9" x2="3.2" y2="-21" />
+                  <rect class="pancarta" x="-1.5" y="-26.5" width="9.5" height="6" rx="0.8" />
+                  <path class="letras" d="M0 -24.6h6.5M0 -22.6h4.5" />
+                }
+                @if (p.brazo && nivel() >= 2) {
+                  <path class="brazo" d="M-1.6 -9 l-2.6 -5.2" [attr.stroke]="p.ropa" />
+                }
+                <path class="piernas" d="M-1.1 0v-4.5M1.1 0v-4.5" />
+                <rect x="-2.3" y="-10.5" width="4.6" height="6.8" rx="1.7" [attr.fill]="p.ropa" />
+                <circle cy="-12.6" r="2" [attr.fill]="p.piel" />
+              </g>
+            </g>
+          }
+        </g>
+
+        @if (nivel() >= 2) {
+          <g class="lema">
+            <path class="palo" d="M119 108 V70 M171 108 V70" />
+            <rect class="pancarta" x="118" y="69" width="54" height="11" rx="1" />
+            <text x="145" y="77.2" textLength="46" lengthAdjust="spacingAndGlyphs">
+              VIVIENDA DIGNA
+            </text>
           </g>
         }
       </g>
-
-      @if (nivel() >= 2) {
-        <g class="lema">
-          <path class="palo" d="M119 108 V70 M171 108 V70" />
-          <rect class="pancarta" x="118" y="69" width="54" height="11" rx="1" />
-          <text x="145" y="77.2" textLength="46" lengthAdjust="spacingAndGlyphs">
-            VIVIENDA DIGNA
-          </text>
-        </g>
-      }
     </svg>
   `,
   styles: `
@@ -275,6 +311,10 @@ const NIVELES = ['calma', 'malestar', 'protestas', 'estallido'] as const;
       --calzada: #4a4f55;
       --copa: #4c8f5c;
       --pancarta: #f5f1e6;
+      --halo-op: 0;
+      --bombilla: #5f666e;
+      /* Lo que dura un día entero cuando corre el tiempo. */
+      --ciclo: 14s;
     }
     svg.malestar {
       --cielo-1: #4a5866;
@@ -329,8 +369,54 @@ const NIVELES = ['calma', 'malestar', 'protestas', 'estallido'] as const;
     .c2 {
       stop-color: var(--cielo-2);
     }
+    .sol {
+      transition: opacity 0.6s;
+    }
     .malestar .sol {
       opacity: 0.45;
+    }
+    .protestas .sol,
+    .estallido .sol {
+      opacity: 0;
+    }
+    /*
+     * Ciclo de día y noche: amanece en el 0 %, anochece en el 50 %. Todas las animaciones arrancan
+     * a mediodía y solo avanzan mientras corre el tiempo; en pausa se quedan donde estaban.
+     */
+    .orbita,
+    .ocaso,
+    .noche,
+    .estrellas,
+    .oscurece,
+    .luces,
+    .halo,
+    .bombilla {
+      animation: var(--ciclo) linear calc(var(--ciclo) * -0.25) infinite paused;
+    }
+    .corre :is(.orbita, .ocaso, .noche, .estrellas, .oscurece, .luces, .halo, .bombilla) {
+      animation-play-state: running;
+    }
+    /* El sol y la luna giran en torno a un punto bajo la calle y se esconden tras los edificios. */
+    .orbita {
+      transform-origin: 160px 200px;
+      animation-name: orbita-sol;
+    }
+    .orbita.nocturna {
+      animation-name: orbita-luna;
+    }
+    .ocaso {
+      animation-name: ocaso;
+    }
+    .noche {
+      fill: #070b24;
+      animation-name: noche;
+    }
+    .estrellas {
+      fill: #fff;
+      animation-name: estrellas;
+    }
+    .oscurece {
+      animation-name: oscurecer;
     }
     .nube {
       fill: var(--nube);
@@ -354,6 +440,7 @@ const NIVELES = ['calma', 'malestar', 'protestas', 'estallido'] as const;
     .luces {
       fill: var(--luz);
       opacity: var(--luz-op);
+      animation-name: encender-luces;
     }
     .escaparates {
       fill: #ffdf94;
@@ -412,19 +499,18 @@ const NIVELES = ['calma', 'malestar', 'protestas', 'estallido'] as const;
       stroke-linecap: round;
     }
     .bombilla {
-      fill: #5f666e;
+      fill: var(--bombilla);
+      animation-name: encender-bombilla;
     }
     .halo {
-      opacity: 0;
+      opacity: var(--halo-op);
+      animation-name: encender-halo;
     }
     /* Las farolas se encienden cuando el día se apaga. */
-    .protestas .halo,
-    .estallido .halo {
-      opacity: 1;
-    }
-    .protestas .bombilla,
-    .estallido .bombilla {
-      fill: #ffe7a8;
+    .protestas,
+    .estallido {
+      --halo-op: 1;
+      --bombilla: #ffe7a8;
     }
     .piernas {
       fill: none;
@@ -535,6 +621,115 @@ const NIVELES = ['calma', 'malestar', 'protestas', 'estallido'] as const;
     .brasa {
       animation-duration: 0.3s;
     }
+    @keyframes orbita-sol {
+      0% {
+        transform: rotate(-42deg);
+      }
+      50% {
+        transform: rotate(42deg);
+      }
+      100% {
+        transform: rotate(318deg);
+      }
+    }
+    @keyframes orbita-luna {
+      0% {
+        transform: rotate(138deg);
+      }
+      50% {
+        transform: rotate(318deg);
+      }
+      100% {
+        transform: rotate(402deg);
+      }
+    }
+    @keyframes ocaso {
+      0%,
+      50%,
+      100% {
+        opacity: 0.8;
+      }
+      12%,
+      38%,
+      62%,
+      88% {
+        opacity: 0;
+      }
+    }
+    @keyframes noche {
+      0%,
+      50%,
+      100% {
+        opacity: 0.35;
+      }
+      10%,
+      40% {
+        opacity: 0;
+      }
+      60%,
+      90% {
+        opacity: 0.85;
+      }
+    }
+    @keyframes estrellas {
+      0%,
+      52%,
+      100% {
+        opacity: 0;
+      }
+      62%,
+      90% {
+        opacity: 0.9;
+      }
+    }
+    @keyframes oscurecer {
+      0%,
+      50%,
+      100% {
+        filter: brightness(0.75) saturate(0.9);
+      }
+      10%,
+      40% {
+        filter: brightness(1) saturate(1);
+      }
+      60%,
+      90% {
+        filter: brightness(0.4) saturate(0.6);
+      }
+    }
+    @keyframes encender-luces {
+      0%,
+      46%,
+      100% {
+        opacity: var(--luz-op);
+      }
+      56%,
+      92% {
+        opacity: 0.95;
+      }
+    }
+    @keyframes encender-halo {
+      0%,
+      46%,
+      100% {
+        opacity: var(--halo-op);
+      }
+      54%,
+      94% {
+        opacity: 1;
+      }
+    }
+    @keyframes encender-bombilla {
+      0%,
+      46%,
+      100% {
+        fill: var(--bombilla);
+      }
+      54%,
+      94% {
+        fill: #ffe7a8;
+      }
+    }
     @keyframes corear {
       to {
         transform: translateY(-1.6px);
@@ -557,6 +752,14 @@ const NIVELES = ['calma', 'malestar', 'protestas', 'estallido'] as const;
       }
     }
     @media (prefers-reduced-motion: reduce) {
+      .orbita,
+      .ocaso,
+      .noche,
+      .estrellas,
+      .oscurece,
+      .luces,
+      .halo,
+      .bombilla,
       .cuerpo,
       .sirena,
       .humo,
@@ -570,6 +773,8 @@ const NIVELES = ['calma', 'malestar', 'protestas', 'estallido'] as const;
 export class EscenaClima {
   /** Tensión social, de 0 a 100. */
   readonly tension = input.required<number>();
+  /** Si el tiempo está corriendo: entonces pasan los días y las noches. */
+  readonly corre = input(false);
 
   protected readonly w = W;
   protected readonly h = H;
@@ -582,6 +787,7 @@ export class EscenaClima {
   protected readonly escaparates = ESCAPARATES;
   protected readonly toldos = TOLDOS;
   protected readonly persianas = PERSIANAS;
+  protected readonly estrellas = ESTRELLAS;
   protected readonly farolas = FAROLAS;
   protected readonly arboles = ARBOLES;
   protected readonly hogueras = HOGUERAS;

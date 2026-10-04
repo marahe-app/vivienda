@@ -1,6 +1,8 @@
-import { ChangeDetectionStrategy, Component, computed, input, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, input, signal } from '@angular/core';
 import { PARAMETROS as P } from '../sim/datos/parametros';
+import { SimService } from '../sim/sim.service';
 import { num, tendencia, type Unidad } from './formato';
+import { hitoCercano, hitosDecretos } from './hitos';
 
 const W = 200;
 const H = 28;
@@ -11,9 +13,17 @@ const H = 28;
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <span class="tendencia" [class]="t().tono">{{ t().texto }}</span>
-    <div class="plano" (mousemove)="mover($event)" (mouseleave)="cursor.set(null)">
+    <div
+      class="plano"
+      [class]="t().tono"
+      (mousemove)="mover($event)"
+      (mouseleave)="cursor.set(null)"
+    >
       <svg [attr.viewBox]="'0 0 ' + w + ' ' + h" preserveAspectRatio="none" aria-hidden="true">
         <line class="inicio" x1="0" [attr.x2]="w" [attr.y1]="g().yInicio" [attr.y2]="g().yInicio" />
+        @for (x of g().hitos; track x) {
+          <line class="hito" [attr.x1]="x" [attr.x2]="x" y1="0" [attr.y2]="h" />
+        }
         <path [attr.d]="g().d" />
         @if (g().marca; as m) {
           <line class="guia" [attr.x1]="m.x" [attr.x2]="m.x" y1="0" [attr.y2]="h" />
@@ -23,6 +33,9 @@ const H = 28;
         <div class="punto" [style.left.%]="(m.x / w) * 100" [style.top.%]="(m.y / h) * 100"></div>
         <div class="lectura" [class.izq]="m.x > w / 2" [style.left.%]="(m.x / w) * 100">
           {{ m.texto }}
+          @for (l of m.leyes; track $index) {
+            <span class="ley">{{ l }}</span>
+          }
         </div>
       }
     </div>
@@ -49,6 +62,18 @@ const H = 28;
       vector-effect: non-scaling-stroke;
       stroke-linejoin: round;
     }
+    .bien path {
+      stroke: var(--bien);
+    }
+    .mal path {
+      stroke: var(--mal);
+    }
+    .plano.bien .punto {
+      background: var(--bien);
+    }
+    .plano.mal .punto {
+      background: var(--mal);
+    }
     .inicio {
       stroke: var(--borde-fuerte);
       stroke-width: 1;
@@ -59,6 +84,17 @@ const H = 28;
       stroke: var(--borde-fuerte);
       stroke-width: 1;
       vector-effect: non-scaling-stroke;
+    }
+    .hito {
+      stroke: var(--aviso);
+      stroke-width: 1;
+      stroke-dasharray: 2 2;
+      opacity: 0.7;
+      vector-effect: non-scaling-stroke;
+    }
+    .ley {
+      display: block;
+      color: var(--aviso);
     }
     .punto {
       position: absolute;
@@ -104,6 +140,7 @@ export class MiniSerie {
     return tendencia(s[0] ?? 0, s[s.length - 1] ?? 0, this.unidad(), this.bueno());
   });
 
+  private readonly sim = inject(SimService);
   protected readonly w = W;
   protected readonly h = H;
   protected readonly cursor = signal<number | null>(null);
@@ -116,7 +153,8 @@ export class MiniSerie {
     const y = (v: number) => H - ((v - (min - margen)) / (max - min + 2 * margen)) * H;
     const x = (i: number) => (serie.length > 1 ? (i / (serie.length - 1)) * W : 0);
     const cursor = this.cursor();
-    let marca: { x: number; y: number; texto: string } | null = null;
+    const hitos = hitosDecretos(this.sim.estado().decretosPromulgados, this.semanas(), W);
+    let marca: { x: number; y: number; texto: string; leyes: string[] } | null = null;
     if (cursor !== null && serie.length > 1) {
       const i = Math.round(cursor * (serie.length - 1));
       const fecha = new Date(
@@ -126,6 +164,7 @@ export class MiniSerie {
         x: x(i),
         y: y(serie[i]),
         texto: `${fecha.toLocaleDateString('es-ES', { month: 'short', year: 'numeric' })}: ${this.formato()(serie[i])}`,
+        leyes: hitoCercano(hitos, x(i), W),
       };
     }
     return {
@@ -134,6 +173,7 @@ export class MiniSerie {
           ? serie.map((v, i) => (i ? 'L' : 'M') + x(i).toFixed(1) + ' ' + y(v).toFixed(1)).join(' ')
           : '',
       yInicio: serie.length ? y(serie[0]) : H / 2,
+      hitos: hitos.map((h) => h.x),
       marca,
     };
   });

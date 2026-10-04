@@ -2,7 +2,7 @@ import { FACTORES } from '../../datos/factores';
 import { PARAMETROS as P } from '../../datos/parametros';
 import type { Estado, Regla, Resolver } from '../../tipos';
 import { gastoAnual } from '../gasto';
-import { clamp, contexto, indicadores, type Indicadores } from '../indicadores';
+import { clamp, contexto, indicadores, presion, type Indicadores } from '../indicadores';
 
 const IPC_BASE = FACTORES['inflacion.general'].base;
 
@@ -63,6 +63,7 @@ export const clima: Regla = {
       saldo: e.cartera.saldo,
       ofAlquiler: ind.enAlquiler,
       ofVenta: ind.enVenta,
+      presiones: e.ciudades.map((c) => Math.round(presion(c) * 1000) / 1000),
     });
     if (e.historial.length > P.maxHistorial)
       e.historial = e.historial.filter((_, i) => i % 2 === 1);

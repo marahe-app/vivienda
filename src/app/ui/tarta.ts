@@ -4,6 +4,7 @@ import { PARAMETROS as P } from '../sim/datos/parametros';
 import { SimService } from '../sim/sim.service';
 import { PROPIETARIOS, type Propietario } from '../sim/tipos';
 import { NOMBRE_PROPIETARIO, compacto, pct } from './formato';
+import { hitoCercano, hitosDecretos } from './hitos';
 import { FuenteIcono } from './fuente';
 
 // El color sigue al propietario, no a su tamaño.
@@ -135,7 +136,7 @@ const fecha = (semana: number) =>
         </span>
         @if (evolucion().personas; as p) {
           <span class="sin-acceso" [title]="ayudaPersonas"
-            ><i></i
+            ><i [style.border-top-color]="p.color"></i
             ><span
               >Déficit de <b>{{ p.deficit }}</b> viviendas · {{ p.familias }} familias en espera ({{
                 p.actual
@@ -166,10 +167,13 @@ const fecha = (semana: number) =>
               [attr.y1]="evolucion().yInicio"
               [attr.y2]="evolucion().yInicio"
             />
-            @if (evolucion().personas; as p) {
-              <path class="linea personas" [attr.d]="p.d" />
+            @for (x of evolucion().hitos; track x) {
+              <line class="hito" [attr.x1]="x" [attr.x2]="x" y1="0" [attr.y2]="h" />
             }
-            <path class="linea" [attr.d]="evolucion().d" [style.stroke]="evolucion().color" />
+            @if (evolucion().personas; as p) {
+              <path class="linea personas" [attr.d]="p.d" [style.stroke]="p.color" />
+            }
+            <path class="linea" [attr.d]="evolucion().d" [style.stroke]="evolucion().trazo" />
             @if (evolucion().marca; as m) {
               <line class="guia" [attr.x1]="m.x" [attr.x2]="m.x" y1="0" [attr.y2]="h" />
             }
@@ -178,6 +182,7 @@ const fecha = (semana: number) =>
             @if (m.yPersonas !== null) {
               <div
                 class="punto personas"
+                [style.background]="evolucion().personas?.color"
                 [style.left.%]="(m.x / w) * 100"
                 [style.top.%]="(m.yPersonas / h) * 100"
               ></div>
@@ -186,18 +191,21 @@ const fecha = (semana: number) =>
               class="punto"
               [style.left.%]="(m.x / w) * 100"
               [style.top.%]="(m.y / h) * 100"
-              [style.background]="evolucion().color"
+              [style.background]="evolucion().trazo"
             ></div>
             <div class="lectura" [class.izq]="m.x > w / 2" [style.left.%]="(m.x / w) * 100">
               {{ m.texto }}
               @if (m.personas) {
                 <span>Déficit {{ m.deficit }} · {{ m.personas }} personas en espera</span>
               }
+              @for (l of m.leyes; track $index) {
+                <span class="ley">{{ l }}</span>
+              }
             </div>
           }
         </div>
         @if (evolucion().personas; as p) {
-          <div class="ejes personas">
+          <div class="ejes personas" [style.color]="p.color">
             <span>{{ p.max }}</span
             ><span>{{ p.min }}</span>
           </div>
@@ -445,6 +453,16 @@ const fecha = (semana: number) =>
       display: block;
       color: var(--mal);
     }
+    .lectura .ley {
+      color: var(--aviso);
+    }
+    .hito {
+      stroke: var(--aviso);
+      stroke-width: 1;
+      stroke-dasharray: 2 2;
+      opacity: 0.7;
+      vector-effect: non-scaling-stroke;
+    }
     .ejes.personas {
       text-align: left;
       color: var(--mal);
@@ -558,10 +576,16 @@ export class Tarta {
         dPersonas += (dPersonas ? 'L' : 'M') + x(i).toFixed(1) + ' ' + yP(v).toFixed(1) + ' ';
     });
     const cursor = this.cursor();
+    const hitos = hitosDecretos(
+      this.sim.estado().decretosPromulgados,
+      hist.map((p) => p.semana),
+      W,
+    );
     let marca: {
       x: number;
       y: number;
       texto: string;
+      leyes: string[];
       yPersonas: number | null;
       personas: string;
       deficit: string;
@@ -576,14 +600,19 @@ export class Tarta {
         yPersonas: g === null ? null : yP(g),
         personas: g === null ? '' : compacto(g),
         deficit: g === null ? '' : compacto(deficit(g)),
+        leyes: hitoCercano(hitos, x(i), W),
       };
     }
     const delta = inicio ? actual / inicio - 1 : 0;
+    const color = filtro ? COLOR[filtro] : 'var(--tinta-2)';
+    // Más vivienda en oferta es buena noticia; más gente en espera, mala.
+    const cambioP = conDato.length ? conDato[conDato.length - 1] / conDato[0] - 1 : 0;
     return {
       titulo:
         (filtro ? NOMBRE_PROPIETARIO[filtro] : 'Todos los propietarios') +
         (tipo === 'total' ? '' : tipo === 'alquiler' ? ' · en alquiler' : ' · en venta'),
-      color: filtro ? COLOR[filtro] : 'var(--tinta-2)',
+      color,
+      trazo: delta > 0.0005 ? 'var(--bien)' : delta < -0.0005 ? 'var(--mal)' : color,
       d:
         serie.length > 1
           ? serie.map((v, i) => (i ? 'L' : 'M') + x(i).toFixed(1) + ' ' + y(v).toFixed(1)).join(' ')
@@ -599,6 +628,12 @@ export class Tarta {
       personas: conDato.length
         ? {
             d: conDato.length > 1 ? dPersonas : '',
+            color:
+              cambioP > 0.0005
+                ? 'var(--mal)'
+                : cambioP < -0.0005
+                  ? 'var(--bien)'
+                  : 'var(--tinta-3)',
             actual: compacto(conDato[conDato.length - 1]),
             familias: compacto(conDato[conDato.length - 1] / P.tamanoHogar),
             deficit: compacto(deficit(conDato[conDato.length - 1])),
@@ -606,6 +641,7 @@ export class Tarta {
             max: compacto(maxP + margenP),
           }
         : null,
+      hitos: hitos.map((h) => h.x),
       marca,
     };
   });

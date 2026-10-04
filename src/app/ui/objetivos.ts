@@ -5,6 +5,7 @@ import { SimService } from '../sim/sim.service';
 import type { PuntoHistorial } from '../sim/tipos';
 import { dec, pct, tendencia } from './formato';
 import { FuenteIcono } from './fuente';
+import { hitoCercano, hitosDecretos } from './hitos';
 
 type Clave = 'alojadas' | 'aniosCompra' | 'esfuerzoSmi';
 interface Def {
@@ -74,9 +75,17 @@ const H = 56;
           <strong>{{ o.valor }}</strong
           ><span class="tendencia" [class]="o.tendencia.tono">{{ o.tendencia.texto }}</span>
         </div>
-        <div class="grafica" (mousemove)="mover($event, o.clave)" (mouseleave)="cursor.set(null)">
+        <div
+          class="grafica"
+          [class]="o.tendencia.tono"
+          (mousemove)="mover($event, o.clave)"
+          (mouseleave)="cursor.set(null)"
+        >
           <svg [attr.viewBox]="'0 0 ' + w + ' ' + h" preserveAspectRatio="none">
             <line class="meta" x1="0" [attr.x2]="w" [attr.y1]="o.yMeta" [attr.y2]="o.yMeta" />
+            @for (x of o.hitos; track x) {
+              <line class="hito" [attr.x1]="x" [attr.x2]="x" y1="0" [attr.y2]="h" />
+            }
             <path class="linea" [attr.d]="o.d" />
             @if (o.marca; as m) {
               <line class="guia" [attr.x1]="m.x" [attr.x2]="m.x" y1="0" [attr.y2]="h" />
@@ -90,6 +99,9 @@ const H = 56;
             ></div>
             <div class="lectura" [class.izq]="m.x > w / 2" [style.left.%]="(m.x / w) * 100">
               {{ m.texto }}
+              @for (l of m.leyes; track $index) {
+                <span class="ley">{{ l }}</span>
+              }
             </div>
           }
         </div>
@@ -150,6 +162,18 @@ const H = 56;
       vector-effect: non-scaling-stroke;
       stroke-linejoin: round;
     }
+    .bien .linea {
+      stroke: var(--bien);
+    }
+    .mal .linea {
+      stroke: var(--mal);
+    }
+    .grafica.bien .punto {
+      background: var(--bien);
+    }
+    .grafica.mal .punto {
+      background: var(--mal);
+    }
     .meta {
       stroke: var(--tinta-3);
       stroke-width: 1;
@@ -163,6 +187,17 @@ const H = 56;
       stroke: var(--borde-fuerte);
       stroke-width: 1;
       vector-effect: non-scaling-stroke;
+    }
+    .hito {
+      stroke: var(--aviso);
+      stroke-width: 1;
+      stroke-dasharray: 2 2;
+      opacity: 0.7;
+      vector-effect: non-scaling-stroke;
+    }
+    .ley {
+      display: block;
+      color: var(--aviso);
     }
     .punto {
       position: absolute;
@@ -201,6 +236,11 @@ export class Objetivos {
     const hist = this.sim.estado().historial;
     const ind = this.sim.ind();
     const cursor = this.cursor();
+    const hitos = hitosDecretos(
+      this.sim.estado().decretosPromulgados,
+      hist.map((p) => p.semana),
+      W,
+    );
     return DEFS.map((def) => {
       const actual = ind[def.clave];
       const serie = hist.map((p) => p[def.clave]);
@@ -213,10 +253,15 @@ export class Objetivos {
         serie.length > 1
           ? serie.map((v, i) => (i ? 'L' : 'M') + x(i).toFixed(1) + ' ' + y(v).toFixed(1)).join(' ')
           : '';
-      let marca: { x: number; y: number; texto: string } | null = null;
+      let marca: { x: number; y: number; texto: string; leyes: string[] } | null = null;
       if (cursor?.clave === def.clave && serie.length > 1) {
         const i = Math.round(cursor.t * (serie.length - 1));
-        marca = { x: x(i), y: y(serie[i]), texto: `${fecha(hist[i])}: ${def.fmt(serie[i])}` };
+        marca = {
+          x: x(i),
+          y: y(serie[i]),
+          texto: `${fecha(hist[i])}: ${def.fmt(serie[i])}`,
+          leyes: hitoCercano(hitos, x(i), W),
+        };
       }
       return {
         ...def,
@@ -229,6 +274,7 @@ export class Objetivos {
         ),
         cumple: def.menorEsMejor ? actual <= def.meta : actual >= def.meta,
         yMeta: y(def.meta),
+        hitos: hitos.map((h) => h.x),
         d,
         marca,
       };

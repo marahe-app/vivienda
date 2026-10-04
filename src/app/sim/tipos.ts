@@ -191,6 +191,8 @@ export interface PuntoHistorial {
   /** Viviendas anunciadas, por propietario. */
   ofAlquiler: Record<Propietario, number>;
   ofVenta: Record<Propietario, number>;
+  /** Presión de cada ciudad, en el orden de `Estado.ciudades`. */
+  presiones: number[];
 }
 
 /** El dinero del que dispone el gobierno para vivienda. */

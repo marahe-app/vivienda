@@ -90,7 +90,7 @@
     <div class="panel"><app-objetivos /></div>
 
     <div class="panel">
-      <app-escena-clima [tension]="sim.estado().tension" />
+      <app-escena-clima [tension]="sim.estado().tension" [corre]="sim.velocidad() > 0" />
       <h2>Clima<app-fuente [ids]="fuenteResultado" /></h2>
       @for (m of clima(); track m.nombre) {
         <div class="medidor" [title]="m.ayuda">
@@ -112,7 +112,7 @@
             <dt>
               {{ f.nombre }}<app-fuente [ids]="f.fuentes" /><small>{{ f.nota }}</small>
             </dt>
-            <dd>{{ f.valor }}</dd>
+            <dd>+{{ f.valor }}<small>/sem</small></dd>
             <app-mini-serie
               [valores]="f.serie"
               [semanas]="semana().semanas"
@@ -184,7 +184,22 @@
                     >
                   }
                 </td>
-                <td><i class="muestra" [style.background]="c.color"></i>{{ c.presion }}</td>
+                <td [title]="c.evolucion.ayuda">
+                  <span class="presion">
+                    <svg
+                      class="chispa"
+                      viewBox="0 0 60 14"
+                      preserveAspectRatio="none"
+                      aria-hidden="true"
+                    >
+                      @for (x of hitos(); track x) {
+                        <line [attr.x1]="x" [attr.x2]="x" y1="0" y2="14" />
+                      }
+                      <path [attr.d]="c.evolucion.d" [style.stroke]="c.evolucion.color" />
+                    </svg>
+                    <i class="muestra" [style.background]="c.color"></i>{{ c.presion }}
+                  </span>
+                </td>
                 <td>{{ c.alquiler }}</td>
                 <td>{{ c.crecAlq }}</td>
                 <td>{{ c.precio }}</td>
