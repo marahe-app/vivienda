@@ -11,7 +11,7 @@ import { FUENTES, type Fuente, type FuenteId } from '../sim/datos/fuentes';
 
 /**
  * Icono de fuente: al pulsarlo muestra de dónde sale un número y enlaza al original.
- * Un supuesto del modelo (sin fuente publicada) se marca con otro icono y lo dice.
+ * Un   (sin fuente publicada) se marca con otro icono y lo dice.
  */
 @Component({
   selector: 'app-fuente',
@@ -56,7 +56,7 @@ import { FUENTES, type Fuente, type FuenteId } from '../sim/datos/fuentes';
           <article>
             <small>{{
               f.tipo === 'supuesto'
-                ? 'Supuesto del modelo · sin fuente publicada'
+                ? '  · sin fuente publicada'
                 : f.tipo === 'derivado'
                   ? 'Calculado con datos publicados · ' + f.organismo
                   : f.organismo + ' · ' + f.periodo
@@ -196,7 +196,7 @@ export class FuenteIcono {
   );
   protected readonly etiqueta = computed(() =>
     this.soloSupuestos()
-      ? 'Supuesto del modelo'
+      ? ' '
       : 'Fuente: ' +
         this.fuentes()
           .filter((f) => f.tipo !== 'supuesto')

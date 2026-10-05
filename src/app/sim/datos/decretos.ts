@@ -2,7 +2,7 @@ import type { Contexto, Decreto, Efecto, Estado, Propietario } from '../tipos';
 import type { FactorId } from './factores';
 import { COSTA, RESTO } from './ciudades';
 import { PARAMETROS as P } from './parametros';
-import { presion, viviendas } from '../motor/indicadores';
+import { hogares, presion, sueloAlquilerDe, viviendas } from '../motor/indicadores';
 
 /**
  * CATÁLOGO DE LEYES
@@ -68,6 +68,36 @@ function sacarVacias(
     }
   }
 }
+
+/** Salario mínimo anual como parte de la renta media del hogar. */
+function smiSobreRenta(e: Estado): number {
+  let h = 0;
+  let renta = 0;
+  for (const c of e.ciudades) {
+    const n = hogares(c);
+    h += n;
+    renta += c.renta * n;
+  }
+  return (e.smi * 12) / (renta / h);
+}
+
+/** Lo que de verdad puede subir el salario mínimo (en tanto por uno) si se decreta una subida de v %: hasta su techo. */
+const subidaSmi = (e: Estado, v: number) =>
+  Math.max(0, Math.min(pct(v), P.smiMaxSobreRenta / smiSobreRenta(e) - 1));
+
+/** Cuanto más alto está ya el salario mínimo respecto a los sueldos, más inflación y desconfianza trae subirlo. */
+const pesoSmi = (e: Estado) =>
+  Math.pow(smiSobreRenta(e) / ((P.smiMensual * 12) / P.rentaHogarEcv2025), 2);
+
+/** Suelo urbanizable con el que arrancó una ciudad, en viviendas: la medida de lo que añade una ley de suelo. */
+const sueloInicial = (c: Estado['ciudades'][number]) =>
+  c.obraBase * 52 * (c.principal ? P.suelo.aniosPrincipal : P.suelo.aniosResto);
+
+/** Lo que gana al año el hogar medio (en euros de la semana) si la cuota de autónomos baja v €/mes. */
+const ganaPorAutonomos = (e: Estado, v: number) => {
+  const hogaresPais = e.ciudades.reduce((s, c) => s + hogares(c), 0);
+  return (P.autonomos * 12 * v * e.nivelPrecios) / hogaresPais;
+};
 
 function pasarAPublico(e: Estado, parte: number) {
   for (const c of e.ciudades) {
@@ -154,7 +184,7 @@ export const DECRETOS: Decreto[] = [
       mult('oferta.movilizacion', 0.5 * pct(v)),
       suma('confianza.objetivo', -2 * (v / 50)),
     ],
-    coste: (v, ctx) => (-ctx.vacias * 300 * pct(v) * 0.3) / 1e6,
+    coste: (v, ctx) => (-ctx.vacias * 300 * ctx.nivelPrecios * pct(v) * 0.3) / 1e6,
     fuentes: ['rdl26', 'censoVacias'],
   },
   {
@@ -180,6 +210,7 @@ export const DECRETOS: Decreto[] = [
       suma('tension.extra', -1, DOS_ANIOS),
     ],
     coste: (v, ctx) => (-ctx.parqueGrandes * ctx.precioMedio * pct(v)) / 1e6,
+    riesgoLegal: 0.2,
     fuentes: ['propiedadAlquiler', 'supuestoDecretos'],
   },
   {
@@ -194,7 +225,7 @@ export const DECRETOS: Decreto[] = [
       mult('inversion.demanda', -0.15, { propietario: 'grandes' }),
       suma('confianza.objetivo', -3),
     ],
-    coste: () => -150,
+    coste: (_, ctx) => -150 * ctx.nivelPrecios,
     fuentes: ['socimi'],
   },
   {
@@ -216,7 +247,8 @@ export const DECRETOS: Decreto[] = [
       ...COSTA.map((ciudad) => mult('inversion.demanda', -0.25 * pct(v), { ciudad })),
       suma('confianza.objetivo', -3),
     ],
-    coste: (v) => -200 * pct(v),
+    coste: (v, ctx) => -200 * pct(v) * ctx.nivelPrecios,
+    riesgoLegal: 0.5,
     fuentes: ['impuestoExtranjeros'],
   },
   {
@@ -250,7 +282,65 @@ export const DECRETOS: Decreto[] = [
       suma('demanda.preferenciaCompra', 0.05 * (v / 15)),
       suma('confianza.objetivo', 2),
     ],
-    coste: (v) => (HIPOTECAS_VIVAS * 9040 * pct(v)) / 1e6,
+    coste: (v, ctx) => (HIPOTECAS_VIVAS * 9040 * ctx.nivelPrecios * pct(v)) / 1e6,
+    fuentes: ['supuestoDecretos'],
+  },
+
+  {
+    id: 'rebaja-irpf',
+    titulo: 'Bajar el IRPF a las familias',
+    descripcion:
+      'Rebaja general del impuesto sobre la renta: cada hogar dispone de más dinero para pagar un alquiler o una hipoteca. Es carísima (cada punto de renta son unos 8.000 M€ al año), calienta algo los precios y, como todos pueden pagar más, parte acaba en el precio de la vivienda.',
+    categoria: 'Impuestos y dinero público',
+    ideologia: { eco: 1, soc: 0 },
+    parametro: {
+      nombre: 'Renta disponible que ganan los hogares',
+      min: 1,
+      max: 5,
+      paso: 1,
+      defecto: 2,
+      unidad: '%',
+    },
+    notaInmediata: (v) => `La renta de los hogares sube un ${v} % de inmediato`,
+    alAplicar: (e, v, anterior) => {
+      for (const c of e.ciudades) c.renta *= (1 + pct(v)) / (1 + pct(anterior ?? 0));
+    },
+    alDerogar: (e, anterior) => {
+      for (const c of e.ciudades) c.renta /= 1 + pct(anterior);
+    },
+    efectos: (v) => [
+      suma('inflacion.general', 0.0004 * v, DOS_ANIOS),
+      suma('confianza.objetivo', v / 2),
+    ],
+    // La renta que ve la ley ya incluye la rebaja: se cobra sobre la de antes.
+    coste: (v, ctx) => ((ctx.rentaHogares / (1 + pct(v))) * pct(v)) / 1e6,
+    fuentes: ['rentaHogar', 'supuestoDecretos'],
+  },
+  {
+    id: 'cuota-autonomos',
+    titulo: 'Rebajar la cuota de autónomos',
+    descripcion:
+      'Menos cuota mensual para los 3,3 millones de autónomos. El modelo no distingue hogares por tipo de trabajo: reparte la mejora entre todos, así que por hogar medio se nota poco.',
+    categoria: 'Impuestos y dinero público',
+    ideologia: { eco: 1, soc: 0 },
+    parametro: {
+      nombre: 'Rebaja de la cuota',
+      min: 50,
+      max: 200,
+      paso: 50,
+      defecto: 100,
+      unidad: '€/mes',
+    },
+    alAplicar: (e, v, anterior) => {
+      const gana = ganaPorAutonomos(e, v) - ganaPorAutonomos(e, anterior ?? 0);
+      for (const c of e.ciudades) c.renta += gana;
+    },
+    alDerogar: (e, anterior) => {
+      const gana = ganaPorAutonomos(e, anterior);
+      for (const c of e.ciudades) c.renta -= gana;
+    },
+    efectos: () => [suma('confianza.objetivo', 1)],
+    coste: (v, ctx) => (P.autonomos * 12 * v * ctx.nivelPrecios) / 1e6,
     fuentes: ['supuestoDecretos'],
   },
 
@@ -281,9 +371,16 @@ export const DECRETOS: Decreto[] = [
     id: 'liberalizar-suelo',
     titulo: 'Liberar más suelo para construir',
     descripcion:
-      'Más suelo urbanizable alrededor de las ciudades tensionadas. Abarata el solar, que es la mitad del precio de un piso nuevo.',
+      'Más suelo urbanizable alrededor de las ciudades: sin suelo para unos años de obra, el promotor no tiene dónde construir. Abarata el solar, que es la mitad del precio de un piso nuevo. Se puede repetir: cada vez añade suelo, y cada vez protesta alguien.',
     categoria: 'Construir más',
     ideologia: { eco: 2, soc: 0 },
+    repetible: true,
+    notaInmediata: (v) =>
+      `El suelo urbanizable de cada ciudad crece un ${v} % del que tenía al inicio`,
+    alAplicar: (e, v) => {
+      for (const c of e.ciudades) c.suelo += pct(v) * sueloInicial(c);
+    },
+    acumulativos: () => [suma('tension.extra', 1, DOS_ANIOS)],
     parametro: {
       nombre: 'Suelo urbanizable nuevo',
       min: 10,
@@ -303,9 +400,13 @@ export const DECRETOS: Decreto[] = [
     id: 'densificar',
     titulo: 'Permitir más alturas en las grandes ciudades',
     descripcion:
-      'Más pisos por solar en Madrid, Barcelona, Valencia, Alicante, Sevilla y Málaga. Los vecinos protestan un tiempo.',
+      'Más pisos por solar en Madrid, Barcelona, Valencia, Alicante, Sevilla y Málaga: en el mismo suelo caben más viviendas. Los vecinos protestan un tiempo.',
     categoria: 'Construir más',
     ideologia: { eco: 1, soc: 0 },
+    notaInmediata: (v) => `En el suelo de las grandes ciudades caben un ${v} % más de viviendas`,
+    alAplicar: (e, v, anterior) => {
+      for (const c of principales(e)) c.suelo += pct(v - (anterior ?? 0)) * sueloInicial(c);
+    },
     parametro: {
       nombre: 'Edificabilidad extra',
       min: 10,
@@ -340,7 +441,7 @@ export const DECRETOS: Decreto[] = [
       mult('construccion.capacidad', 0.15 * (v / 400)),
       suma('construccion.retraso', -6 * (v / 400)),
     ],
-    coste: (v) => v,
+    coste: (v, ctx) => v * ctx.nivelPrecios,
     fuentes: ['manoObra', 'supuestoDecretos'],
   },
   {
@@ -359,7 +460,7 @@ export const DECRETOS: Decreto[] = [
       unidad: 'plazas',
     },
     efectos: (v) => [mult('construccion.capacidad', 0.3 * (v / 100000))],
-    coste: (v) => v * 0.01,
+    coste: (v, ctx) => v * 0.01 * ctx.nivelPrecios,
     fuentes: ['manoObra'],
   },
   {
@@ -385,6 +486,7 @@ export const DECRETOS: Decreto[] = [
         c.parque.pequenos.ofVenta += n * 0.3;
         c.parque.grandes.ofAlquiler += n * 0.4;
         c.parque.grandes.ofVenta += n * 0.3;
+        e.contadores.construidas += n;
       }
     },
     efectos: () => [suma('confianza.objetivo', 1)],
@@ -411,6 +513,7 @@ export const DECRETOS: Decreto[] = [
         suma('tension.extra', -(2 + 2 * k), DOS_ANIOS),
       ];
     },
+    riesgoLegal: 0.2,
     fuentes: ['rdl26', 'catalunaTensionada'],
   },
   {
@@ -448,7 +551,7 @@ export const DECRETOS: Decreto[] = [
     id: 'rebajar-alquileres',
     titulo: 'Bajar los alquileres por decreto',
     descripcion:
-      'Todos los alquileres bajan de golpe este porcentaje y quedan congelados. Se puede repetir. Muchos caseros retiran el piso o venden.',
+      'Todos los alquileres bajan de golpe este porcentaje y quedan congelados. Se puede repetir, pero cada vez más caseros dejan de renovar, y por debajo de lo que cuesta mantener un piso (la mitad del alquiler de partida) nadie alquila.',
     categoria: 'Control de precios',
     ideologia: { eco: -2, soc: 0 },
     grupo: 'control-alquiler',
@@ -456,8 +559,15 @@ export const DECRETOS: Decreto[] = [
     parametro: { nombre: 'Rebaja inmediata', min: 5, max: 30, paso: 5, defecto: 10, unidad: '%' },
     notaInmediata: (v) => `Alquileres −${v} % de inmediato`,
     alAplicar: (e, v) => {
-      for (const c of e.ciudades) c.alquiler *= 1 - pct(v);
+      for (const c of e.ciudades) {
+        // No pueden bajar de lo que cuesta mantener la vivienda.
+        const suelo = sueloAlquilerDe(c);
+        const nuevo = Math.min(c.alquiler, Math.max(c.alquiler * (1 - pct(v)), suelo));
+        c.alquilerVivo = Math.min(c.alquilerVivo * (1 - pct(v)), nuevo);
+        c.alquiler = nuevo;
+      }
     },
+    acumulativos: (v) => [mult('contratos.noRenovacion', 2 * pct(v), DOS_ANIOS)],
     efectos: (v) => [
       tope('alquiler.crecimientoMax', 0),
       suma('oferta.intencionAlquilar', -(0.16 + 0.3 * pct(v))),
@@ -465,6 +575,7 @@ export const DECRETOS: Decreto[] = [
       suma('confianza.objetivo', -(10 + v / 2)),
       suma('tension.extra', -(4 + v / 5), DOS_ANIOS),
     ],
+    riesgoLegal: 0.6,
     fuentes: ['catalunaTensionada', 'supuestoDecretos'],
   },
   {
@@ -481,6 +592,7 @@ export const DECRETOS: Decreto[] = [
       suma('confianza.objetivo', -10),
       suma('tension.extra', -2, DOS_ANIOS),
     ],
+    riesgoLegal: 0.7,
     fuentes: ['supuestoDecretos'],
   },
   {
@@ -496,6 +608,18 @@ export const DECRETOS: Decreto[] = [
       suma('confianza.objetivo', -2),
     ],
     fuentes: ['temporada', 'catalunaTensionada'],
+  },
+
+  {
+    id: 'inspeccion-alquiler',
+    titulo: 'Inspección y registro de alquileres',
+    descripcion:
+      'Los topes se incumplen: pagos en negro, contratos de temporada falsos, extras inventados. Un registro obligatorio de contratos y un cuerpo de inspectores hacen que se cumplan más. Sin topes en vigor no sirve de nada.',
+    categoria: 'Control de precios',
+    ideologia: { eco: -1, soc: 0 },
+    efectos: () => [suma('cumplimiento.alquiler', 0.2), suma('confianza.objetivo', -1)],
+    coste: (_, ctx) => 150 * ctx.nivelPrecios,
+    fuentes: ['supuestoDecretos'],
   },
 
   // ══ Reglas del alquiler ══════════════════════════════════════════════════
@@ -522,6 +646,7 @@ export const DECRETOS: Decreto[] = [
       suma('confianza.objetivo', -7 * pct(v)),
       suma('tension.extra', -5 * pct(v), DOS_ANIOS),
     ],
+    riesgoLegal: 0.3,
     fuentes: ['rdl26', 'lanzamientos'],
   },
   {
@@ -592,6 +717,8 @@ export const DECRETOS: Decreto[] = [
       mult('oferta.movilizacion', 0.2 * pct(v)),
       suma('confianza.objetivo', -3 * pct(v)),
     ],
+    // Lo que deja de ingresarse por el turismo que se alojaba en esos pisos.
+    coste: (v, ctx) => 300 * pct(v) * ctx.nivelPrecios,
     fuentes: ['turisticas', 'rdl26'],
   },
   {
@@ -606,6 +733,7 @@ export const DECRETOS: Decreto[] = [
       suma('confianza.objetivo', -6),
       suma('tension.extra', -2, DOS_ANIOS),
     ],
+    riesgoLegal: 0.5,
     fuentes: ['propiedadAlquiler', 'supuestoDecretos'],
   },
   {
@@ -638,6 +766,7 @@ export const DECRETOS: Decreto[] = [
       suma('confianza.objetivo', -8),
       suma('tension.extra', -3, DOS_ANIOS),
     ],
+    riesgoLegal: 0.3,
     fuentes: ['ley24cat'],
   },
 
@@ -745,6 +874,7 @@ export const DECRETOS: Decreto[] = [
       suma('confianza.objetivo', -Math.min(30, 15 * (v / 50))),
       suma('tension.extra', -4, DOS_ANIOS),
     ],
+    riesgoLegal: 0.5,
     fuentes: ['ley24cat', 'supuestoDecretos'],
   },
 
@@ -765,7 +895,7 @@ export const DECRETOS: Decreto[] = [
       unidad: '€/mes',
     },
     efectos: (v) => [suma('acceso.ayudaAlquiler', v), suma('tension.extra', -2, DOS_ANIOS)],
-    coste: (v, ctx) => (ctx.contratos * 52 * 2 * v * 12) / 1e6,
+    coste: (v, ctx) => (ctx.contratos * 52 * 2 * v * ctx.nivelPrecios * 12) / 1e6,
     fuentes: ['bonoJoven'],
   },
   {
@@ -802,20 +932,25 @@ export const DECRETOS: Decreto[] = [
     id: 'subir-smi',
     titulo: 'Subir el salario mínimo',
     descripcion:
-      'Subida inmediata del SMI. Se puede repetir. Algo más de inflación y menos confianza de las empresas.',
+      'Subida inmediata del SMI, que llega en parte a la renta de los hogares. Durante dos años trae más inflación y menos confianza de las empresas. Se puede repetir, pero cada subida cuesta más que la anterior y el SMI anual no pasa del 60 % de la renta media del hogar (hoy es el 44 %).',
     categoria: 'Quién busca casa',
     ideologia: { eco: -1, soc: 0 },
     repetible: true,
     parametro: { nombre: 'Subida', min: 2, max: 15, paso: 1, defecto: 5, unidad: '%' },
-    notaInmediata: (v) => `SMI +${v} % de inmediato`,
+    notaInmediata: (v) => `SMI +${v} % de inmediato (hasta su techo)`,
     alAplicar: (e, v) => {
-      e.smi *= 1 + pct(v);
+      const sube = subidaSmi(e, v);
+      e.smi *= 1 + sube;
+      for (const c of e.ciudades) c.renta *= 1 + P.traspasoSmiRenta * sube;
     },
-    efectos: (v) => [
-      suma('inflacion.general', 0.0006 * v),
-      suma('confianza.objetivo', -v / 3),
-      suma('tension.extra', -v / 5, DOS_ANIOS),
-    ],
+    efectos: (v, e) => [suma('tension.extra', -20 * subidaSmi(e, v), DOS_ANIOS)],
+    acumulativos: (v, e) => {
+      const puntos = 100 * subidaSmi(e, v) * pesoSmi(e);
+      return [
+        suma('inflacion.general', 0.0006 * puntos, DOS_ANIOS),
+        suma('confianza.objetivo', -puntos / 3, DOS_ANIOS),
+      ];
+    },
     fuentes: ['smi'],
   },
   {
@@ -874,12 +1009,18 @@ export const DECRETOS: Decreto[] = [
       mult('demanda.inmigracion', 3 * pct(v), { ciudad: RESTO }),
       mult('demanda.emancipacion', 2.5 * pct(v), { ciudad: RESTO }),
     ],
-    coste: (v) => 50 * v,
+    coste: (v, ctx) => 50 * v * ctx.nivelPrecios,
     fuentes: ['supuestoDecretos'],
   },
 ];
 
 export const DECRETO_POR_ID = new Map(DECRETOS.map((d) => [d.id, d]));
+
+/** Todo lo que hace una ley al promulgarla: sus efectos y los que se acumulan en cada promulgación. */
+export const efectosDe = (d: Decreto, v: number, e: Estado): Efecto[] => [
+  ...d.efectos(v, e),
+  ...(d.acumulativos?.(v, e) ?? []),
+];
 
 /** Valor con el que se promulga una ley si no se indica otro. */
 export const valorPorDefecto = (d: Decreto) => d.parametro?.defecto ?? 1;

@@ -48,12 +48,88 @@ export const PARAMETROS = {
   costeViviendaPublica: 0.16,
   /** Dinero público para vivienda al año (M€), PGE 2023. La cartera recibe 1/12 cada mes. */
   presupuestoAnual: 3_472,
+  /** Coste de construir un m² (ejecución más honorarios y gastos, sin suelo), 2025. */
+  costeConstruccionM2: 1_350,
 
   // ── Supuestos del modelo ─────────────────────────────────────────────────
   /** Hogares jóvenes que querrían emanciparse y no pueden: demanda latente que el déficit oficial no recoge. */
   jovenesLatentes: 590_000,
   /** Anuncios de alquiler sin inquilino, sobre viviendas alquiladas. */
   ofertaAlquilerInicial: 0.008,
+  /** Lo que paga de media un inquilino con contrato, respecto al precio de un anuncio de hoy. */
+  alquilerVivoInicial: 0.88,
+  /** Semanas que tarda un contrato en renegociarse a precio de mercado: cinco años más las prórrogas. */
+  semanasContrato: 364,
+  /** Cuando el mercado paga esto más que el inquilino, el casero deja de renovar el doble de contratos. */
+  brechaNoRenovacion: 0.45,
+  /** Hogares inquilinos que desaparecen, respecto a los propietarios: son más jóvenes. */
+  disolucionInquilinos: 0.5,
+  /**
+   * Cuánto bajan las llegadas y la emancipación cuando alquilar cuesta más esfuerzo que al inicio
+   * (y cuánto suben si cuesta menos), y entre qué límites.
+   */
+  elasticidadDemanda: { inmigracion: 0.5, emancipacion: 1, min: 0.5, max: 1.1 },
+
+  /** Ahorro (propio y de la familia) con el que cuenta quien quiere comprar, en años de su renta: de ahí sale la entrada. */
+  ahorroCompra: 1.9,
+  /** Autónomos afiliados (≈ 3,3 millones): base de la rebaja de su cuota. */
+  autonomos: 3_300_000,
+  /** Lo que cuesta al año gestionar y mantener una vivienda pública (comunidad, reparaciones, impagos, vacantes), en € de inicio. */
+  gestionPublica: 1_600,
+  /** Parte del precio de la obra nueva que se añade (respecto a la de partida) que vuelve a la cartera como IVA. */
+  retornoFiscalObra: 0.1,
+  /** La vivienda usada se vende por debajo de lo que costaría construirla: suelo absoluto del precio. */
+  descuentoUsada: 0.75,
+  /** Rentabilidad bruta por debajo de la cual nadie pone un piso en alquiler: suelo absoluto del alquiler. */
+  rentabilidadMin: 0.035,
+  /**
+   * Construir se encarece cuando el sector va más cargado que al inicio (ocupaba la mitad de su capacidad):
+   * coste = (uso / usoBase)^exponente, hasta un máximo.
+   */
+  costeObra: { usoBase: 0.5, exponente: 0.5, max: 1.6 },
+  /** Cuánto sube el apetito inversor por cada punto que el precio sube por encima del IPC (y baja si cae). */
+  expectativas: 3,
+  /**
+   * Propietarios: cuando el precio real cae más del umbral desde su máximo reciente, cada punto de caída
+   * suma tensión y resta confianza. El máximo se olvida a este ritmo anual.
+   */
+  propietarios: { umbral: 0.05, tension: 100, confianza: 60, olvido: 0.02 },
+  /** Puntos de apoyo al gobierno que da (o quita) la coyuntura en su extremo: «es la economía». */
+  apoyoCoyuntura: 10,
+  /** Familias en espera que cada semana se van a una ciudad más barata, por cada 100 % de sobreesfuerzo respecto a la media. */
+  movilidad: 0.002,
+  /** Las llegadas del exterior parten del récord de 2024 y bajan esta parte a lo largo de estos años. */
+  demografia: { caidaInmigracion: 0.4, anios: 15 },
+  /**
+   * Suelo urbanizable al inicio, en años de obra al ritmo de partida, y reserva (en años al ritmo actual)
+   * por debajo de la cual la obra privada se frena.
+   */
+  suelo: { aniosPrincipal: 8, aniosResto: 20, reserva: 4 },
+  /** Semanas que tarda el comportamiento (caseros, promotores, inversores) en adaptarse del todo a una ley. */
+  semanasDespliegue: 13,
+  /**
+   * Coyuntura: persistencia semanal y tamaño del choque, y cuánto mueve en su extremo
+   * la subida de rentas, las llegadas y la emancipación, el tipo de interés y la confianza.
+   */
+  ciclo: {
+    persistencia: 0.993,
+    choque: 0.047,
+    renta: 0.03,
+    llegadas: 0.3,
+    emancipacion: 0.2,
+    tipo: 0.01,
+    confianza: 15,
+  },
+  /** Elecciones cada cuatro años: se pierden si el apoyo al gobierno queda por debajo del umbral. */
+  elecciones: {
+    cada: 208,
+    umbral: 38,
+    /** Puntos de apoyo que resta cada punto de tensión por encima de 60, y que suma cada punto de mejora desde las anteriores. */
+    tension: 0.7,
+    mejora: 0.4,
+  },
+  /** Los tribunales tardan entre dos y tres años en anular una ley. */
+  semanasAnulacion: { min: 104, margen: 52 },
 
   objetivos: {
     /** Familias con vivienda sobre el total de familias (alojadas + en espera). */
@@ -104,7 +180,7 @@ export const PARAMETROS = {
   /** Parte de la obra de grandes promotores destinada a alquiler. */
   obraParaAlquiler: 0.25,
 
-  /** Por debajo de esta parte del precio de partida (actualizado con el IPC) no se vende ni se alquila: no cubre costes. */
+  /** Por debajo de esta parte del precio de partida (actualizado con el IPC) no se vende ni se alquila; además rigen los suelos absolutos de coste y rentabilidad. */
   sueloPrecio: 0.55,
   sueloAlquiler: 0.5,
 
@@ -113,8 +189,19 @@ export const PARAMETROS = {
   /** Puntos de IPC que añade cada 1.000 M€ impresos, y durante cuántas semanas. */
   inflacionPorMilMillones: 0.0008,
   semanasInflacionImpresa: 104,
-  /** Lo que se imprime de golpe (M€). */
+  /** Lo que se imprime de golpe (M€ de inicio). */
   tramoImpresion: 1000,
+  /**
+   * Deuda de la cartera: interés anual de partida, y puntos de tensión y de confianza
+   * por cada 1.000 M€ (de inicio) que se deben.
+   */
+  deuda: { interes: 0.03, tensionPorMil: 0.1, confianzaPorMil: 0.1 },
+  /** Puntos que sube el tipo de interés (hipotecas y deuda) cuando la confianza cae de 60 a 0. */
+  primaRiesgo: 0.02,
+  /** Parte de una subida del salario mínimo que llega a la renta media de los hogares. */
+  traspasoSmiRenta: 0.15,
+  /** Techo del salario mínimo anual, como parte de la renta media del hogar (hoy es el 44 %): por encima destruye empleo y no se sube. */
+  smiMaxSobreRenta: 0.6,
 
   /** Índice de presión de una ciudad: 100 = estos umbrales. Cada componente puede llegar al doble. */
   presion: {
@@ -122,14 +209,14 @@ export const PARAMETROS = {
     aniosCompra: 13,
     espera: 0.12,
     tope: 2,
-    pesos: { esfuerzo: 0.35, aniosCompra: 0.25, espera: 0.4 },
+    pesos: { esfuerzo: 0.3, aniosCompra: 0.2, espera: 0.5 },
   },
   /** Hogares a partir de los cuales una provincia es una «gran área urbana». */
   principalMinHogares: 700_000,
   /** Peso de cada hogar en la tensión social según dónde vive. */
   peso: { principal: 2, normal: 1, resto: 0.5 },
-  /** Familias expulsadas del alquiler por semana que se consideran «normales» (CGPJ + no renovaciones). */
-  expulsadosRef: 1000,
+  /** Parte de los inquilinos del sector privado expulsada por semana que se considera «normal» (CGPJ + no renovaciones): unas 1.000 familias al inicio. */
+  expulsadosRef: 0.00026,
 
   semanasCalentamiento: 26,
   maxHistorial: 1600,
@@ -155,5 +242,6 @@ export const FUENTE_PARAMETRO = {
   pctTuristicas: 'turisticas',
   compraventasAnuales: 'compraventas',
   costeViviendaPublica: 'casa47',
+  costeConstruccionM2: 'costeConstruccion',
   presupuestoAnual: 'pge',
 } as const satisfies Partial<Record<keyof typeof PARAMETROS, FuenteId>>;

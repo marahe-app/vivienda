@@ -1,6 +1,6 @@
 import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 import { NOMBRE_CIUDAD } from '../sim/datos/ciudades';
-import { DECRETOS, DECRETO_POR_ID, valorPorDefecto } from '../sim/datos/decretos';
+import { DECRETOS, DECRETO_POR_ID, efectosDe, valorPorDefecto } from '../sim/datos/decretos';
 import { FACTORES, type DefFactor } from '../sim/datos/factores';
 import type { FuenteId } from '../sim/datos/fuentes';
 import { costeLey } from '../sim/motor/gasto';
@@ -189,7 +189,7 @@ const textoCoste = (c: number) =>
           }
           <small>{{ g.decretos.length }}</small>
         </button>
-        @if (g.abierta) {
+        <div class="guia" [attr.inert]="g.abierta ? null : ''">
           <div class="cajon">
             @for (d of g.decretos; track d.id) {
               <article
@@ -237,6 +237,9 @@ const textoCoste = (c: number) =>
                   @if (d.nota) {
                     <li class="neutro">{{ d.nota }}</li>
                   }
+                  @if (d.riesgo) {
+                    <li class="neutro">{{ d.riesgo }}</li>
+                  }
                   @for (ef of d.efectos; track $index) {
                     <li [class.bueno]="ef.bueno" [class.malo]="!ef.bueno">
                       <span class="flecha" aria-hidden="true">{{ ef.bueno ? '▲' : '▼' }}</span
@@ -282,17 +285,30 @@ const textoCoste = (c: number) =>
               </article>
             }
           </div>
-        }
+        </div>
       </section>
     } @empty {
       <p class="vacio">Ninguna ley coincide con «{{ busqueda() }}».</p>
     }
 
     <section class="decreto">
-      <header>
-        <span>Decreto del mes</span>
-        <b>{{ elegidas().length }} de {{ maxLeyes }} cambios</b>
-      </header>
+      <div class="pestanas">
+        <header>
+          <span>Decreto del mes</span>
+          <b>{{ elegidas().length }} de {{ maxLeyes }} cambios</b>
+        </header>
+        <button
+          class="historial"
+          title="Ver todos los decretos promulgados"
+          [attr.aria-expanded]="sim.historialAbierto()"
+          (click)="sim.historialAbierto.set(true)"
+        >
+          Historial
+          @if (decretosPromulgados(); as n) {
+            <b>{{ n }}</b>
+          }
+        </button>
+      </div>
       <div class="carpeta">
         @if (!sim.estado().decretoDisponible) {
           <span class="sello vigor" aria-hidden="true">Promulgado</span>
@@ -327,17 +343,6 @@ const textoCoste = (c: number) =>
         </button>
       </div>
     </section>
-
-    @if (historial().length) {
-      <h3>Leyes promulgadas</h3>
-      <ol>
-        @for (h of historial(); track $index) {
-          <li [class.derogada]="h.derogada">
-            <small>{{ h.fecha }}</small> {{ h.texto }}
-          </li>
-        }
-      </ol>
-    }
   `,
   styles: `
     :host {
@@ -439,9 +444,11 @@ const textoCoste = (c: number) =>
     .cabecera:hover:not(:disabled) {
       background: linear-gradient(#5d676f, #48525a 45%, #3b444b);
     }
+    /* Se queda pegada arriba mientras se recorre su cajón. */
     .cabecera {
-      position: relative;
-      z-index: 1;
+      position: sticky;
+      top: var(--pegado, 0px);
+      z-index: 4;
       display: flex;
       align-items: center;
       gap: 8px;
@@ -507,26 +514,40 @@ const textoCoste = (c: number) =>
     .marca.vig {
       color: #a4e6a4;
     }
-    .cajon {
+    /* La guía corre el cajón: de alto cero a su alto natural, y vuelta al cerrar. */
+    .guia {
       display: grid;
+      grid-template-rows: 0fr;
+      visibility: hidden;
+      transition:
+        grid-template-rows 0.32s ease-in-out,
+        visibility 0s 0.32s;
+    }
+    .abierta .guia {
+      grid-template-rows: 1fr;
+      visibility: visible;
+      transition: grid-template-rows 0.32s ease-in-out;
+    }
+    .cajon {
+      min-height: 0;
+      overflow: hidden;
+      display: grid;
+      align-content: start;
       gap: 14px;
       margin: -3px 5px 0;
-      padding: 18px 10px 14px;
+      padding: 0 10px;
       background: #131618;
       border: solid #4a545b;
-      border-width: 0 3px 3px;
+      border-width: 0 3px;
       border-radius: 0 0 4px 4px;
       box-shadow: inset 0 12px 12px -6px #000;
-      animation: abrir 0.3s ease-out;
+      transition:
+        padding 0.32s ease-in-out,
+        border-width 0.32s ease-in-out;
     }
-    @keyframes abrir {
-      from {
-        clip-path: inset(0 -12px 100% -12px);
-        translate: 0 -10px;
-      }
-      to {
-        clip-path: inset(0 -12px -12px -12px);
-      }
+    .abierta .cajon {
+      padding: 18px 10px 14px;
+      border-width: 0 3px 3px;
     }
     @keyframes sacar {
       from {
@@ -572,6 +593,9 @@ const textoCoste = (c: number) =>
       display: grid;
       gap: 6px;
       padding: 14px 14px 10px;
+    }
+    /* Las hojas salen una tras otra cada vez que se abre el cajón. */
+    .abierta article {
       animation: sacar 0.3s ease-out backwards;
       animation-delay: calc(min(var(--i), 8) * 35ms);
     }
@@ -698,10 +722,12 @@ const textoCoste = (c: number) =>
     @media (prefers-reduced-motion: reduce) {
       .sello,
       .ley,
-      .cajon,
-      article {
+      .abierta article {
         animation: none;
       }
+      .guia,
+      .abierta .guia,
+      .cajon,
       .cabecera,
       article::before,
       article::after {
@@ -758,7 +784,7 @@ const textoCoste = (c: number) =>
     /* Carpeta de archivo: pestaña arriba y las hojas aprobadas dentro. */
     .decreto {
       position: sticky;
-      bottom: 0;
+      bottom: var(--pegado-abajo, 0px);
       z-index: 2;
       display: grid;
       justify-items: start;
@@ -772,6 +798,14 @@ const textoCoste = (c: number) =>
       color: var(--tinta);
       filter: drop-shadow(0 -3px 8px rgb(0 0 0 / 0.5));
     }
+    .pestanas {
+      display: flex;
+      width: 95%;
+      flex-direction: row;
+      justify-content: space-between;
+      align-items: flex-end;
+      gap: 3px;
+    }
     .decreto header {
       display: flex;
       align-items: baseline;
@@ -781,6 +815,24 @@ const textoCoste = (c: number) =>
       background: color-mix(in srgb, var(--carpeta) 88%, #000);
       font-size: 12px;
       color: var(--tinta-2);
+    }
+    /* Pestañita de otra carpeta, más baja y más oscura: abre el historial de decretos. */
+    .historial,
+    .historial:hover:not(:disabled) {
+      background: color-mix(in srgb, var(--carpeta) 68%, #000);
+    }
+    .historial {
+      display: flex;
+      align-items: baseline;
+      gap: 6px;
+      padding: 2px 9px 1px;
+      border: 0;
+      border-radius: 7px 7px 0 0;
+      font-size: 11px;
+      color: var(--tinta);
+    }
+    .historial:hover {
+      filter: brightness(1.12);
     }
     .decreto b {
       color: var(--tinta);
@@ -919,23 +971,6 @@ const textoCoste = (c: number) =>
       border-color: var(--eje-der);
       color: var(--eje-der);
     }
-    ol {
-      margin: 0;
-      padding: 0;
-      list-style: none;
-      display: grid;
-      gap: 4px;
-      font-size: 12px;
-      color: var(--tinta-2);
-    }
-    ol small {
-      color: var(--tinta-3);
-      margin-right: 6px;
-    }
-    ol .derogada {
-      color: var(--tinta-3);
-      text-decoration: line-through;
-    }
   `,
 })
 export class Decretos {
@@ -943,6 +978,10 @@ export class Decretos {
   protected readonly sim = inject(SimService);
 
   protected readonly maxLeyes = LEYES_POR_DECRETO;
+  /** Decretos promulgados (un decreto puede cambiar varias leyes a la vez). */
+  protected readonly decretosPromulgados = computed(
+    () => new Set(this.sim.estado().decretosPromulgados.map((d) => d.semana)).size,
+  );
   protected readonly busqueda = signal('');
   private readonly abiertas = signal<ReadonlySet<Categoria>>(new Set());
   /** Valor del deslizador de cada ley; si no se ha tocado, el que esté en vigor o el de por defecto. */
@@ -972,7 +1011,7 @@ export class Decretos {
       });
   });
 
-  /** Diferencia de gasto anual (M€) entre lo que hay en vigor y lo que se va a promulgar. */
+  /** Diferencia de gasto anual (M€ de hoy) entre lo que hay en vigor y lo que se va a promulgar. */
   protected readonly costeDecreto = computed(() => {
     const e = this.sim.estado();
     const ctx = this.sim.ctx();
@@ -983,7 +1022,7 @@ export class Decretos {
         (c.valor === null ? 0 : costeLey(c.id, c.valor, ctx, e.nivelPrecios)) -
         (actual === null ? 0 : costeLey(c.id, actual, ctx, e.nivelPrecios));
     }
-    return total;
+    return total / e.nivelPrecios;
   });
   protected readonly textoCosteDecreto = computed(() => {
     const c = this.costeDecreto();
@@ -1010,9 +1049,9 @@ export class Decretos {
           const vig = vigente(e, d.id);
           const cambio = seleccion.find((c) => c.id === d.id);
           const otros = seleccion.filter((c) => c.id !== d.id);
-          const efectos = describirEfectos(d.efectos(valor, e));
+          const efectos = describirEfectos(efectosDe(d, valor, e));
           const nota = d.notaInmediata?.(valor);
-          const coste = textoCoste(costeLey(d.id, valor, ctx, e.nivelPrecios));
+          const coste = textoCoste(costeLey(d.id, valor, ctx, e.nivelPrecios) / e.nivelPrecios);
           const fila = {
             id: d.id,
             titulo: d.titulo,
@@ -1027,6 +1066,9 @@ export class Decretos {
             estado:
               vig === null ? '' : d.parametro ? `En vigor: ${textoValor(d, vig)}` : 'En vigor',
             nota,
+            riesgo: d.riesgoLegal
+              ? `Los tribunales pueden anularla a los dos o tres años (${Math.round(d.riesgoLegal * 100)} % de probabilidad)`
+              : '',
             efectos,
             coste,
             /** undefined: no está en el decreto · null: se deroga · número: se fija a ese valor. */
@@ -1103,27 +1145,4 @@ export class Decretos {
       this.valores.set({});
     }
   }
-
-  protected readonly historial = computed(() => {
-    const inicio = this.sim.estado().fecha.getTime() - this.sim.estado().semana * 7 * 86_400_000;
-    return this.sim
-      .estado()
-      .decretosPromulgados.map((p) => {
-        const d = DECRETO_POR_ID.get(p.id)!;
-        return {
-          fecha: new Date(inicio + p.semana * 7 * 86_400_000).toLocaleDateString('es-ES', {
-            month: 'short',
-            year: 'numeric',
-          }),
-          texto:
-            p.valor === null
-              ? d.titulo
-              : d.parametro
-                ? `${d.titulo}: ${textoValor(d, p.valor)}`
-                : d.titulo,
-          derogada: p.valor === null,
-        };
-      })
-      .reverse();
-  });
 }

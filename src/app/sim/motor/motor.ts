@@ -6,7 +6,8 @@ import type { Cambio, Ciudad, Decreto, Estado, Parque } from '../tipos';
 import { clamp, flujosVacios, indicadores, rentabilidad } from './indicadores';
 import { crearResolver } from './modificadores';
 import { REGLAS } from './reglas';
-import { objetivoTension } from './reglas/clima';
+import { apoyo, objetivoTension } from './reglas/clima';
+import { azar } from './reglas/economia';
 
 const parque = (p: Partial<Parque> = {}): Parque => ({
   propia: 0,
@@ -47,6 +48,7 @@ function crearCiudad(d: DatosCiudad, t: Totales): Ciudad {
   const cuotaHogares = hogares / t.hogares;
   const precio = d.precioM2 * P.superficieVenta;
   const alquiler = d.alquilerM2 * P.superficieAlquiler;
+  const renta = d.renta * (P.rentaHogarEcv2025 / P.rentaHogarAtlas2023);
   const obra = d.terminadasLibres / 52;
   return {
     id: d.id,
@@ -80,13 +82,22 @@ function crearCiudad(d: DatosCiudad, t: Totales): Ciudad {
     },
     precio,
     alquiler,
-    renta: d.renta * (P.rentaHogarEcv2025 / P.rentaHogarAtlas2023),
+    alquilerVivo: alquiler * P.alquilerVivoInicial,
+    suelo:
+      obra *
+      52 *
+      (d.id !== RESTO && d.hogares >= P.principalMinHogares
+        ? P.suelo.aniosPrincipal
+        : P.suelo.aniosResto),
+    esfuerzoRef: alquiler / ((renta * P.rentaBuscadores) / 12),
+    renta,
     cuotaInm,
     cuotaEman: cuotaHogares,
     obraBase: obra,
     ritmoObra: obra,
     ritmoObraPublica: 0,
     ritmoObraConcesion: 0,
+    concesion: 0,
     precioRef: precio,
     alquilerRef: alquiler,
     crecAlqRef: d.crecAlq,
@@ -113,7 +124,8 @@ function ejecutarReglas(e: Estado) {
   for (const regla of REGLAS) regla.ejecutar(e, f);
 }
 
-export function crearEstado(): Estado {
+/** `semilla` fija el azar de la partida (coyuntura y tribunales): la misma semilla da la misma partida. */
+export function crearEstado(semilla = 1): Estado {
   const totales: Totales = {
     hogares: CIUDADES.reduce((s, d) => s + d.hogares, 0),
     viviendas: CIUDADES.reduce((s, d) => s + d.viviendas, 0),
@@ -133,11 +145,24 @@ export function crearEstado(): Estado {
     confianza: 60,
     tension: 60,
     gastoAnual: 0,
+    ingresosAnual: 0,
     nivelPrecios: 1,
-    cartera: { saldo: presupuesto, presupuestoMensual: presupuesto, impreso: 0, impresoAnio: 0 },
+    cartera: {
+      saldo: presupuesto,
+      presupuestoMensual: presupuesto,
+      impreso: 0,
+      impresoAnio: 0,
+      deuda: 0,
+    },
     contadores: { inmigrantesDesde2018: inmigrantesDesde2018(), expulsados: 0, construidas: 0 },
     historial: [],
     fin: null,
+    azar: semilla | 0,
+    coyuntura: 0,
+    costeObra: 1,
+    precioMax: 0,
+    eleccion: { semana: P.elecciones.cada, tensionAnterior: 60 },
+    anulaciones: [],
     calibrando: true,
   };
 
@@ -155,7 +180,10 @@ export function crearEstado(): Estado {
   e.calibrando = false;
   // La tensión arranca donde la sitúa la situación real, sin arrastre.
   const f = crearResolver(e);
-  e.tension = clamp(objetivoTension(e, f, indicadores(e, f('impuesto.compra'))), 0, 100);
+  const ind = indicadores(e, f('impuesto.compra'));
+  e.precioMax = ind.precioMedio;
+  e.tension = clamp(objetivoTension(e, f, ind), 0, 100);
+  e.eleccion.tensionAnterior = e.tension;
   ejecutarReglas(e);
   e.contadores.expulsados = 0;
   e.contadores.construidas = 0;
@@ -171,13 +199,48 @@ export function avanzarSemana(e: Estado) {
     e.cartera.impresoAnio = 0;
   if (e.fecha.getMonth() !== mes) {
     e.decretoDisponible = true;
-    // Cierre de mes: lo que falte se imprime (con su inflación) y la cartera vuelve a su presupuesto.
-    if (e.cartera.saldo < 0) imprimir(e, -e.cartera.saldo);
+    // Cierre de mes: lo que falte pasa a deuda, lo que sobre la amortiza, y la cartera vuelve a su presupuesto.
+    if (e.cartera.saldo < 0) e.cartera.deuda -= e.cartera.saldo;
+    else e.cartera.deuda -= Math.min(e.cartera.deuda, e.cartera.saldo);
     // El presupuesto se actualiza con los precios: en términos reales no se encoge solo.
     e.cartera.presupuestoMensual = crearResolver(e)('presupuesto.mensual') * e.nivelPrecios;
     e.cartera.saldo = e.cartera.presupuestoMensual;
   }
+  anular(e);
   ejecutarReglas(e);
+  elecciones(e);
+}
+
+/** Los tribunales anulan las leyes que tenían pendientes, si siguen en vigor tal como se promulgaron. */
+function anular(e: Estado) {
+  const vencidas = e.anulaciones.filter((a) => a.semana <= e.semana);
+  if (!vencidas.length) return;
+  e.anulaciones = e.anulaciones.filter((a) => a.semana > e.semana);
+  for (const a of vencidas) {
+    const ultima = e.decretosPromulgados.filter((p) => p.id === a.id).pop();
+    const d = DECRETO_POR_ID.get(a.id);
+    if (!d || !ultima || ultima.valor === null || ultima.semana !== a.promulgada) continue;
+    derogar(e, d, 'anulada');
+    e.modificadores.push({
+      factor: 'tension.extra',
+      op: 'suma',
+      valor: 3,
+      semanas: 52,
+      hasta: e.semana + 52,
+      origen: 'tribunales',
+      etiqueta: `Anulada por los tribunales: ${d.titulo}`,
+    });
+  }
+}
+
+/** Cada cuatro años se vota: con poco apoyo, el gobierno pierde y la partida acaba. */
+function elecciones(e: Estado) {
+  if (e.semana < e.eleccion.semana) return;
+  if (!e.fin && apoyo(e) < P.elecciones.umbral) {
+    e.fin = 'derrota';
+    e.motivoFin = 'elecciones';
+  }
+  e.eleccion = { semana: e.eleccion.semana + P.elecciones.cada, tensionAnterior: e.tension };
 }
 
 /** Valor en vigor de una ley, o null si no está en vigor. */
@@ -240,36 +303,63 @@ function aplicar(e: Estado, d: Decreto, v: number) {
     }
   }
   // Si ya estaba en vigor con otro valor, sus efectos se sustituyen por los nuevos.
+  const anterior = vigente(e, d.id);
   e.modificadores = e.modificadores.filter((m) => m.origen !== d.id);
   for (const ef of d.efectos(v, e)) {
     e.modificadores.push({
       ...ef,
       origen: d.id,
       etiqueta: d.titulo,
+      desde: e.semana,
       hasta: ef.semanas ? e.semana + ef.semanas : undefined,
     });
   }
   e.vigentes[d.id] = v;
-  d.alAplicar?.(e, v);
+  // Se calculan antes del efecto inmediato, con la misma situación que ve el jugador al decretar.
+  const acumulativos = d.acumulativos?.(v, e) ?? [];
+  d.alAplicar?.(e, v, anterior);
+  // Las leyes de encaje legal dudoso pueden caer en los tribunales al cabo de dos o tres años.
+  if (d.riesgoLegal && azar(e) < d.riesgoLegal) {
+    e.anulaciones.push({
+      id: d.id,
+      semana: e.semana + P.semanasAnulacion.min + Math.floor(azar(e) * P.semanasAnulacion.margen),
+      promulgada: e.semana,
+    });
+  }
+  // Con otro origen: ni la siguiente promulgación ni la derogación los retiran; caducan solos.
+  for (const ef of acumulativos) {
+    const semanas = ef.semanas ?? 104;
+    e.modificadores.push({
+      ...ef,
+      semanas,
+      origen: `${d.id}+${e.semana}`,
+      etiqueta: d.titulo,
+      desde: e.semana,
+      hasta: e.semana + semanas,
+    });
+  }
   e.decretosPromulgados.push({ id: d.id, semana: e.semana, valor: v });
 }
 
-function derogar(e: Estado, d: Decreto) {
+function derogar(e: Estado, d: Decreto, motivo?: 'anulada') {
+  const anterior = vigente(e, d.id);
   e.modificadores = e.modificadores.filter((m) => m.origen !== d.id);
   delete e.vigentes[d.id];
-  e.decretosPromulgados.push({ id: d.id, semana: e.semana, valor: null });
+  if (anterior !== null) d.alDerogar?.(e, anterior);
+  e.decretosPromulgados.push({ id: d.id, semana: e.semana, valor: null, motivo });
 }
 
 export const ORIGEN_IMPRESION = 'imprimir';
 
-/** Crea dinero para la cartera. Sube la inflación durante dos años y resta confianza. */
-export function imprimir(e: Estado, cantidad = P.tramoImpresion) {
+/** Crea dinero para la cartera (por defecto, un tramo en euros de inicio). Sube la inflación durante dos años y resta confianza. */
+export function imprimir(e: Estado, cantidad = P.tramoImpresion * e.nivelPrecios) {
   if (cantidad <= 0) return;
   e.cartera.saldo += cantidad;
-  e.cartera.impreso += cantidad;
-  e.cartera.impresoAnio += cantidad;
+  e.cartera.impreso += cantidad / e.nivelPrecios;
+  e.cartera.impresoAnio += cantidad / e.nivelPrecios;
   const hasta = e.semana + P.semanasInflacionImpresa;
-  const miles = cantidad / 1000;
+  // En euros de inicio: con los precios al doble, el mismo billete pesa la mitad.
+  const miles = cantidad / e.nivelPrecios / 1000;
   e.modificadores.push(
     {
       factor: 'inflacion.general',

@@ -46,8 +46,14 @@ export interface Ciudad {
   parque: Record<Propietario, Parque>;
   /** Precio medio de compra (€). */
   precio: number;
-  /** Alquiler medio de mercado (€/mes). */
+  /** Alquiler de mercado: lo que se pide por un piso que se anuncia hoy (€/mes). */
   alquiler: number;
+  /** Alquiler medio que pagan los inquilinos con contrato en vigor (€/mes): va por detrás del de mercado. */
+  alquilerVivo: number;
+  /** Viviendas que caben en el suelo ya urbanizable de la ciudad: la obra privada lo consume y el planeamiento lo repone. */
+  suelo: number;
+  /** Esfuerzo de entrada al alquiler al inicio: la referencia con la que llegadas y emancipación reaccionan al precio. */
+  esfuerzoRef: number;
   /** Renta neta anual media del hogar (€). */
   renta: number;
   cuotaInm: number;
@@ -58,6 +64,8 @@ export interface Ciudad {
   ritmoObraPublica: number;
   /** Vivienda asequible que construyen promotores privados sobre suelo público: el Estado solo paga el suelo. */
   ritmoObraConcesion: number;
+  /** Viviendas del parque público entregadas en concesión: durante 75 años el alquiler lo cobra el promotor, no el Estado. */
+  concesion: number;
   /** Precio y alquiler de referencia (crecen con el IPC): miden el margen del promotor y ponen suelo a las caídas. */
   precioRef: number;
   alquilerRef: number;
@@ -99,6 +107,8 @@ export interface Modificador extends Efecto {
   origen: string;
   etiqueta: string;
   hasta?: number;
+  /** Semana en que se promulgó: los factores de comportamiento tardan unas semanas en notar la ley entera. */
+  desde?: number;
 }
 
 export interface Ambito {
@@ -132,7 +142,14 @@ export interface Contexto {
   contratos: number;
   compras: number;
   precioMedio: number;
+  /** Alquiler medio que pagan los inquilinos del sector privado. */
   alquilerMedio: number;
+  /** Nivel de precios al consumo (1 = inicio): actualiza los costes fijados en euros. */
+  nivelPrecios: number;
+  /** Encarecimiento de construir por lo ocupado que está el sector (1 = como al inicio). */
+  costeObra: number;
+  /** Renta anual de todos los hogares del país (€): base de las rebajas de impuestos generales. */
+  rentaHogares: number;
   /** Hogares inquilinos del sector privado y viviendas vacías privadas. */
   inquilinos: number;
   vacias: number;
@@ -155,8 +172,20 @@ export interface Decreto {
   efectos: (v: number, e: Estado) => Efecto[];
   /** Coste anual en M€ (negativo = recauda). */
   coste?: (v: number, ctx: Contexto) => number;
-  /** Efecto inmediato y puntual que no se puede expresar como modificador. Se repite si se vuelve a promulgar. */
-  alAplicar?: (e: Estado, v: number) => void;
+  /**
+   * Efectos que se suman cada vez que se promulga la ley y no se retiran al derogarla:
+   * han de tener duración. Es lo que hace que repetir una ley cueste cada vez.
+   */
+  acumulativos?: (v: number, e: Estado) => Efecto[];
+  /**
+   * Efecto inmediato y puntual que no se puede expresar como modificador. Se repite si se vuelve a promulgar.
+   * `anterior` es el valor con el que la ley estaba en vigor, o null si no lo estaba.
+   */
+  alAplicar?: (e: Estado, v: number, anterior: number | null) => void;
+  /** Deshace al derogar lo que `alAplicar` dejó hecho, cuando se puede deshacer. */
+  alDerogar?: (e: Estado, anterior: number) => void;
+  /** Probabilidad de que los tribunales anulen la ley unos años después de promulgarla. */
+  riesgoLegal?: number;
   notaInmediata?: (v: number) => string;
   /** Si la ley se puede volver a promulgar con el mismo valor (su efecto inmediato se repite). */
   repetible?: boolean;
@@ -186,8 +215,11 @@ export interface PuntoHistorial {
   smi: number;
   impuestoCompra: number;
   ipc: number;
+  /** Nivel de precios de ese momento: con él se pasan los euros de la serie a euros de inicio. */
+  nivelPrecios: number;
   gasto: number;
   saldo: number;
+  deuda: number;
   /** Viviendas anunciadas, por propietario. */
   ofAlquiler: Record<Propietario, number>;
   ofVenta: Record<Propietario, number>;
@@ -201,9 +233,11 @@ export interface Cartera {
   saldo: number;
   /** Lo que entra cada mes (M€). */
   presupuestoMensual: number;
-  /** Dinero creado de la nada desde el inicio y en el año en curso (M€). */
+  /** Dinero creado de la nada desde el inicio y en el año en curso (M€ de inicio). */
   impreso: number;
   impresoAnio: number;
+  /** Deuda acumulada por los meses cerrados en números rojos (M€). Paga intereses. */
+  deuda: number;
 }
 
 export interface Estado {
@@ -215,19 +249,40 @@ export interface Estado {
   modificadores: Modificador[];
   /** Valor en vigor de cada ley (id → valor del parámetro, o 1 si no tiene). */
   vigentes: Record<string, number>;
-  /** Historial de cambios: valor null = derogación. */
-  decretosPromulgados: { id: string; semana: number; valor: number | null }[];
+  /** Historial de cambios: valor null = derogación (o anulación por los tribunales, si lleva motivo). */
+  decretosPromulgados: {
+    id: string;
+    semana: number;
+    valor: number | null;
+    motivo?: 'anulada';
+  }[];
   decretoDisponible: boolean;
   confianza: number;
   tension: number;
-  /** Gasto neto anual en política de vivienda (M€). */
+  /** Gasto anual en política de vivienda (M€): leyes, obra y compra pública e intereses. */
   gastoAnual: number;
+  /** Ingresos anuales propios (M€): alquileres del parque público, netos de gestión, y el IVA de la obra nueva que se añade. */
+  ingresosAnual: number;
   /** Nivel de precios al consumo respecto al inicio (1 = octubre de 2026): actualiza costes y presupuesto. */
   nivelPrecios: number;
   cartera: Cartera;
   contadores: { inmigrantesDesde2018: number; expulsados: number; construidas: number };
   historial: PuntoHistorial[];
   fin: null | 'victoria' | 'derrota';
+  /** Por qué se perdió: la tensión llegó a 100 o se perdieron las elecciones. */
+  motivoFin?: 'tension' | 'elecciones';
+  /** Estado del generador de azar: con la misma semilla y los mismos decretos, la partida se repite igual. */
+  azar: number;
+  /** Coyuntura económica, de −1 (recesión) a 1 (expansión): mueve rentas, llegadas, tipos y confianza. */
+  coyuntura: number;
+  /** Encarecimiento de construir por lo ocupado que está el sector (1 = como al inicio). */
+  costeObra: number;
+  /** Máximo reciente del precio medio de compra, en euros corrientes: los propietarios miran lo que pagaron, sin descontar la inflación. */
+  precioMax: number;
+  /** Próximas elecciones y la tensión que había en las anteriores. */
+  eleccion: { semana: number; tensionAnterior: number };
+  /** Leyes que los tribunales van a anular: cuál, cuándo, y de qué promulgación se trata. */
+  anulaciones: { id: string; semana: number; promulgada: number }[];
   /** Durante el calentamiento inicial no se mueven precios ni rentas. */
   calibrando: boolean;
 }

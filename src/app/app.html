@@ -1,35 +1,14 @@
-<header class="barra">
-  <div class="cartera" [class.rojo]="cartera().saldo < 0" [title]="cartera().ayuda">
-    <div class="fila">
-      <span>Cartera de vivienda<app-fuente [ids]="fuentesCartera" /></span>
-      <b>{{ cartera().saldoTexto }}</b>
-    </div>
-    <div class="pista">
-      <i [style.width.%]="cartera().barra" [style.background]="cartera().color"></i>
-    </div>
-    <small
-      >Entran {{ cartera().presupuesto }} al mes · se gastan {{ cartera().gastoMes }} · IPC
-      {{ cartera().ipc }}</small
-    >
-    <div class="fila acciones">
-      <button
-        (click)="sim.imprimir()"
-        title="Crea 1.000 M€ de la nada. Sube la inflación 0,08 puntos durante dos años y resta confianza a los inversores."
-      >
-        Imprimir 1.000 M€
-      </button>
-      <small>{{ cartera().impreso }}</small>
-    </div>
-  </div>
+<header class="barra" #barra>
   <div class="marca">
     <h1>Vivienda</h1>
     <span>Simulador del problema de la vivienda en España</span>
   </div>
-  <div class="reloj">
-    <b>{{ fecha() }}</b>
-    <span>{{ tiempo() }}</span>
-  </div>
-  <div class="controles">
+
+  <div class="tiempo">
+    <div class="reloj">
+      <b>{{ fecha() }}</b>
+      <span>{{ tiempo() }}</span>
+    </div>
     <div class="conmutador" role="group" aria-label="Velocidad">
       <button [class.activo]="sim.velocidad() === 0" (click)="sim.pausar()" title="Pausa">
         ❚❚
@@ -45,39 +24,47 @@
       }
     </div>
     <button (click)="sim.avanzarUna()">+1 semana</button>
-    <label
-      ><input
-        type="checkbox"
-        [checked]="sim.pausarCadaMes()"
-        (change)="sim.pausarCadaMes.set($any($event.target).checked)"
-      />
-      Pausar cada mes</label
+  </div>
+
+  <div class="derecha">
+    <div class="cartera" [class.rojo]="cartera().saldo < 0" [title]="cartera().ayuda">
+      <div class="fila">
+        <span>Cartera de vivienda<app-fuente [ids]="fuentesCartera" /></span>
+        @if (cartera().deuda; as deuda) {
+          <span class="aviso-deuda">{{ deuda }}</span>
+        }
+        <b>{{ cartera().saldoTexto }}</b>
+      </div>
+      <div class="pista">
+        <i [style.width.%]="cartera().barra" [style.background]="cartera().color"></i>
+      </div>
+      <small
+        >Entran {{ cartera().presupuesto }} al mes{{ cartera().ingresos }} · se gastan
+        {{ cartera().gastoMes }} · IPC {{ cartera().ipc }}{{ cartera().impreso }}</small
+      >
+    </div>
+    <button
+      class="imprimir"
+      (click)="sim.imprimir()"
+      title="Crea 1.000 M€ de la nada (en euros de hoy). Sube la inflación 0,08 puntos durante dos años y resta confianza a los inversores. Lo que sobre a fin de mes amortiza deuda."
     >
-    <app-partidas (cargada)="finVisto.set(false)" />
-    <button class="discreto" (click)="reiniciar()">Reiniciar</button>
+      Imprimir<small>1.000 M€</small>
+    </button>
+    <nav class="menu" aria-label="Partida">
+      <app-partidas (cargada)="finVisto.set(false)" />
+      <button class="discreto" (click)="reiniciar()">Reiniciar</button>
+    </nav>
   </div>
 </header>
+
+<app-historial [(abierto)]="sim.historialAbierto" />
 
 @if (sim.estado().fin; as fin) {
   @if (!finVisto()) {
     <div class="fin" [class.victoria]="fin === 'victoria'">
       <div>
-        <strong>{{ fin === 'victoria' ? 'Objetivo conseguido' : 'El gobierno ha caído' }}</strong>
-        <span>
-          {{
-            fin === 'victoria'
-              ? 'Has cumplido las tres condiciones en ' +
-                tiempo() +
-                ', con una postura «' +
-                sim.postura().etiqueta +
-                '».'
-              : 'La tensión social ha llegado al límite en ' +
-                tiempo() +
-                '. Tu postura: «' +
-                sim.postura().etiqueta +
-                '».'
-          }}
-        </span>
+        <strong>{{ final().titulo }}</strong>
+        <span>{{ final().texto }}</span>
       </div>
       <button (click)="finVisto.set(true)">Seguir jugando</button>
       <button (click)="reiniciar()">Nueva partida</button>
@@ -102,6 +89,7 @@
         </div>
       }
       <small class="presiones">{{ presiones() }}</small>
+      <small class="presiones">{{ coyuntura() }}<app-fuente [ids]="fuenteCoyuntura" /></small>
     </div>
 
     <div class="panel">
@@ -123,7 +111,12 @@
           </div>
         }
       </dl>
-      <h2 class="sub">Precios, rentas e impuestos</h2>
+      <h2
+        class="sub"
+        title="Importes en euros de hoy: se descuenta la inflación acumulada desde el inicio de la partida."
+      >
+        Precios, rentas e impuestos <small>(en euros de hoy)</small>
+      </h2>
       <dl>
         @for (f of semana().precios; track f.nombre) {
           <div>
@@ -226,16 +219,32 @@
         </button>
         <button
           role="tab"
+          [class.activo]="pestana() === 'estrategias'"
+          (click)="pestana.set('estrategias')"
+        >
+          Estrategias
+          @if (estrategiaEnMarcha()) {
+            <span class="en-marcha" title="Hay una estrategia aplicándose sola">●</span>
+          }
+        </button>
+        <button
+          role="tab"
           [class.activo]="pestana() === 'factores'"
           (click)="pestana.set('factores')"
         >
           Factores del modelo
         </button>
       </div>
-      @if (pestana() === 'decretos') {
-        <app-decretos />
-      } @else {
-        <app-factores />
+      @switch (pestana()) {
+        @case ('decretos') {
+          <app-decretos />
+        }
+        @case ('estrategias') {
+          <app-estrategias />
+        }
+        @default {
+          <app-factores />
+        }
       }
     </div>
   </section>

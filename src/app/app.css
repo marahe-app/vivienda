@@ -8,57 +8,19 @@
   top: 0;
   z-index: 5;
   display: flex;
-  align-items: center;
-  gap: 20px;
   flex-wrap: wrap;
-  padding: 10px 16px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 20px;
+  padding: 8px 16px;
   background: var(--superficie);
   border-bottom: 1px solid var(--borde);
 }
-/* La cartera va la primera, arriba a la izquierda. */
-.cartera {
-  display: grid;
-  gap: 4px;
-  min-width: 250px;
-  padding: 6px 10px;
-  border: 1px solid var(--borde-fuerte);
-  border-radius: 10px;
-  background: var(--superficie-2);
-}
-.cartera.rojo {
-  border-color: var(--mal);
-  background: color-mix(in srgb, var(--mal) 12%, var(--superficie-2));
-}
-.cartera .fila {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 10px;
-  font-size: 12px;
-  color: var(--tinta-2);
-}
-.cartera .fila b {
-  font-size: 15px;
-  color: var(--tinta);
-  font-variant-numeric: tabular-nums;
-}
-.cartera.rojo .fila b {
-  color: var(--mal);
-}
-.cartera small {
-  font-size: 10.5px;
-  color: var(--tinta-3);
-}
-.cartera .acciones button {
-  padding: 3px 8px;
-  font-size: 11.5px;
-}
-.cartera .pista {
-  height: 4px;
-}
-
 .marca {
   display: grid;
+  flex: 0 1 auto;
+  min-width: 0;
+  margin-right: auto;
 }
 .marca h1 {
   margin: 0;
@@ -67,31 +29,95 @@
 .marca span {
   font-size: 11.5px;
   color: var(--tinta-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
-.reloj {
-  display: grid;
-  margin-left: auto;
-  text-align: right;
-}
-.reloj b {
-  font-size: 15px;
-}
-.reloj span {
-  font-size: 11.5px;
-  color: var(--tinta-3);
-}
-.controles {
+
+/* En el centro, el tiempo: la fecha y los mandos que lo mueven. */
+.tiempo {
   display: flex;
   align-items: center;
   gap: 10px;
-  flex-wrap: wrap;
 }
-.controles label {
+.reloj {
+  display: grid;
+  text-align: right;
+  white-space: nowrap;
+}
+.reloj b {
+  font-size: 14px;
+}
+.reloj span {
+  font-size: 11px;
+  color: var(--tinta-3);
+}
+
+/* A la derecha, el dinero y el menú de la partida. */
+.derecha {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.cartera {
+  display: grid;
+  gap: 3px;
+  flex: none;
+  width: 310px;
+  padding: 5px 10px;
+  border: 1px solid var(--borde-fuerte);
+  border-radius: 9px;
+  background: var(--superficie-2);
+}
+.cartera.rojo {
+  border-color: var(--mal);
+  background: color-mix(in srgb, var(--mal) 12%, var(--superficie-2));
+}
+.cartera .fila {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--tinta-2);
+  white-space: nowrap;
+}
+.cartera .fila b {
+  margin-left: auto;
+  font-size: 15px;
+  color: var(--tinta);
+  font-variant-numeric: tabular-nums;
+}
+.cartera.rojo .fila b {
+  color: var(--mal);
+}
+.aviso-deuda {
+  font-size: 10.5px;
+  color: var(--aviso);
+}
+.cartera small {
+  font-size: 10.5px;
+  color: var(--tinta-3);
+}
+.cartera .pista {
+  height: 4px;
+}
+.imprimir {
+  display: grid;
+  justify-items: center;
+  padding: 4px 9px;
+  line-height: 1.2;
+}
+.imprimir small {
+  font-size: 10.5px;
+  color: var(--tinta-3);
+}
+.menu {
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 12.5px;
-  color: var(--tinta-2);
+  padding-left: 12px;
+  border-left: 1px solid var(--borde);
 }
 
 .fin {
@@ -143,13 +169,24 @@ main {
 /* La columna entera es la que se pega: el panel ocupa toda su columna y no tendría recorrido. */
 main > .col:last-child {
   position: sticky;
-  top: 64px;
+  top: calc(var(--alto-barra, 64px) + 12px);
 }
 .lateral {
-  max-height: calc(100vh - 80px);
+  /* Lo que se pega dentro (cajones de leyes arriba, carpeta del decreto abajo) tapa también el relleno del panel. */
+  --pegado: -14px;
+  --pegado-abajo: -14px;
+  max-height: calc(100vh - var(--alto-barra, 64px) - 24px);
   overflow-y: auto;
   display: flex;
   flex-direction: column;
+}
+.en-marcha {
+  margin-left: 3px;
+  font-size: 9px;
+  color: var(--bien);
+}
+.conmutador .activo .en-marcha {
+  color: #fff;
 }
 .lateral > * {
   flex: none;
@@ -321,6 +358,16 @@ tr.sel td {
   vector-effect: non-scaling-stroke;
 }
 
+/* Cuando la cabecera no cabe en una línea, el dinero y el menú bajan a la segunda y la ocupan entera. */
+@media (max-width: 1380px) {
+  .derecha {
+    flex: 1 1 100%;
+    justify-content: flex-start;
+  }
+  .menu {
+    margin-left: auto;
+  }
+}
 @media (max-width: 1100px) {
   main {
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
@@ -329,19 +376,31 @@ tr.sel td {
     grid-column: 1 / -1;
     position: static;
   }
+  /* Aquí se desplaza la página entera: los cajones de las leyes se pegan bajo la cabecera. */
   .lateral {
     max-height: none;
+    overflow: visible;
+    --pegado: var(--alto-barra, 64px);
+    --pegado-abajo: 0px;
   }
 }
 @media (max-width: 720px) {
   main {
     grid-template-columns: minmax(0, 1fr);
   }
+  .tiempo,
+  .derecha {
+    flex-wrap: wrap;
+    justify-content: flex-start;
+  }
   .reloj {
-    margin-left: 0;
     text-align: left;
   }
   .cartera {
     width: 100%;
+  }
+  .menu {
+    padding-left: 0;
+    border-left: 0;
   }
 }

@@ -1,7 +1,7 @@
 import type { Regla } from '../../tipos';
 import { clima } from './clima';
 import { construccion } from './construccion';
-import { demanda, disoluciones } from './demanda';
+import { demanda, disoluciones, mudanzas } from './demanda';
 import { economia } from './economia';
 import { emparejamiento } from './emparejamiento';
 import { expulsiones, intencion, ofertaExistente } from './oferta';
@@ -14,6 +14,7 @@ import { precios } from './precios';
 export const REGLAS: Regla[] = [
   economia,
   demanda,
+  mudanzas,
   disoluciones,
   intencion,
   expulsiones,

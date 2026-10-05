@@ -27,6 +27,8 @@ export interface DefFactor {
   fuente: FuenteId | readonly FuenteId[];
   /** true si subir el factor es, en general, malo para el acceso a la vivienda. */
   inverso?: boolean;
+  /** true si es un comportamiento que tarda unas semanas en adaptarse a una ley nueva. */
+  gradual?: boolean;
 }
 
 export const FACTORES = {
@@ -38,6 +40,7 @@ export const FACTORES = {
     min: 0,
     formato: 'num',
     inverso: true,
+    gradual: true,
     fuente: 'inmigracion',
   },
   'demanda.emancipacion': {
@@ -47,6 +50,7 @@ export const FACTORES = {
     min: 0,
     formato: 'num',
     inverso: true,
+    gradual: true,
     fuente: ['emancipacionDerivada', 'emancipacion'],
   },
   'demanda.busqueda': {
@@ -82,6 +86,7 @@ export const FACTORES = {
     min: 0,
     max: 1,
     formato: 'pct',
+    gradual: true,
     fuente: 'supuesto',
   },
 
@@ -153,6 +158,15 @@ export const FACTORES = {
     formato: 'pct',
     fuente: 'avalesIco',
   },
+  'hipoteca.financiacion': {
+    nombre: 'Parte del precio que presta el banco (el resto es la entrada)',
+    grupo: 'Lo que pueden pagar',
+    base: 0.8,
+    min: 0.5,
+    max: 1,
+    formato: 'pct',
+    fuente: ['hipotecas', 'supuesto'],
+  },
   'impuesto.compra': {
     nombre: 'Impuestos al comprar una casa (ITP o IVA)',
     grupo: 'Lo que pueden pagar',
@@ -172,6 +186,7 @@ export const FACTORES = {
     min: 0,
     max: 1,
     formato: 'pct',
+    gradual: true,
     fuente: ['rentabilidad', 'supuesto'],
   },
   'oferta.movilizacion': {
@@ -180,6 +195,7 @@ export const FACTORES = {
     base: 0.00025,
     min: 0,
     formato: 'pct',
+    gradual: true,
     fuente: 'supuesto',
   },
   'oferta.retirada': {
@@ -190,6 +206,7 @@ export const FACTORES = {
     max: 1,
     formato: 'pct',
     inverso: true,
+    gradual: true,
     fuente: 'supuesto',
   },
   'inversion.demanda': {
@@ -199,6 +216,7 @@ export const FACTORES = {
     min: 0,
     formato: 'x',
     inverso: true,
+    gradual: true,
     fuente: 'supuesto',
   },
   'compra.publica': {
@@ -217,6 +235,7 @@ export const FACTORES = {
     base: 1,
     min: 0,
     formato: 'x',
+    gradual: true,
     fuente: 'terminadas',
   },
   'construccion.publica': {
@@ -241,6 +260,7 @@ export const FACTORES = {
     base: 4200,
     min: 0,
     formato: 'num',
+    gradual: true,
     fuente: ['visados', 'manoObra', 'supuesto'],
   },
   'construccion.retraso': {
@@ -250,6 +270,7 @@ export const FACTORES = {
     min: 20,
     formato: 'num',
     inverso: true,
+    gradual: true,
     fuente: 'licencias',
   },
 
@@ -327,6 +348,17 @@ export const FACTORES = {
     formato: 'pct',
     inverso: true,
     fuente: 'noRenovaciones',
+  },
+
+  'cumplimiento.alquiler': {
+    nombre: 'Cuánto se cumplen los topes del alquiler',
+    grupo: 'Reglas del alquiler',
+    base: 0.75,
+    min: 0,
+    max: 1,
+    formato: 'pct',
+    gradual: true,
+    fuente: 'supuesto',
   },
 
   // ── Clima político y dinero público ──────────────────────────────────────

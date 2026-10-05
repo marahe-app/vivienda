@@ -1,6 +1,7 @@
 import { PARAMETROS as P } from '../../datos/parametros';
 import type { Propietario, Regla } from '../../tipos';
 import { aniosFinanciables, clamp, hogares, suma } from '../indicadores';
+import { ayudaAlquiler, tipoHipoteca } from './economia';
 
 const PRIVADOS: Propietario[] = ['familias', 'pequenos', 'grandes'];
 
@@ -27,23 +28,38 @@ export const emparejamiento: Regla = {
 
       // 2. Compra: familias en espera, inquilinos e inversores compiten por lo que hay en venta.
       const rentaBuscador = c.renta * P.rentaBuscadores;
-      const precioFinal = c.precio * (1 + f('impuesto.compra', ambito));
-      // Lo que presta el banco: cuota del 35 % de la renta, al tipo y plazo medios, más el aval público.
+      const impuesto = f('impuesto.compra', ambito);
+      // Lo que presta el banco: cuota del 35 % de la renta, al tipo y plazo medios, y como mucho
+      // esta parte del precio (más lo que cubra el aval público). El resto y los impuestos son la entrada.
       const anios = aniosFinanciables(
-        f('hipoteca.tipo', ambito),
+        tipoHipoteca(e, f, ambito),
         f('hipoteca.plazo', ambito),
         f('hipoteca.esfuerzo', ambito),
-        f('hipoteca.aval', ambito),
+        0,
       );
+      const financia = Math.min(1, f('hipoteca.financiacion', ambito) + f('hipoteca.aval', ambito));
+      /** Parte de los hogares con esa renta que puede comprar: les cabe la cuota y tienen ahorrada la entrada. */
+      const puedeComprar = (renta: number) =>
+        1 /
+        (1 +
+          Math.pow((c.precio * financia) / (renta * anios), P.exponenteAcceso) +
+          Math.pow(
+            (c.precio * (1 - financia + impuesto)) / (renta * P.ahorroCompra),
+            P.exponenteAcceso,
+          ));
       const demEspera =
-        buscan *
-        f('demanda.preferenciaCompra', ambito) *
-        accesible(precioFinal, rentaBuscador * anios);
+        buscan * f('demanda.preferenciaCompra', ambito) * puedeComprar(rentaBuscador);
       const inquilinos = suma(c, 'alquilada', true);
-      const demInquilinos =
-        inquilinos * P.inquilinosCompran * accesible(precioFinal, c.renta * anios);
+      const demInquilinos = inquilinos * P.inquilinosCompran * puedeComprar(c.renta);
       const enVenta = suma(c, 'ofVenta', true);
-      const atractivo = clamp((c.rentabilidad - 0.035) / 0.025, 0, 2) * (e.confianza / 60);
+      // El inversor mira la rentabilidad, la confianza y lo que viene subiendo el precio: compra más si sube, huye si cae.
+      const expectativa = clamp(
+        1 + P.expectativas * (c.crecVenta - f('inflacion.general')),
+        0.5,
+        2,
+      );
+      const atractivo =
+        clamp((c.rentabilidad - 0.035) / 0.025, 0, 2) * (e.confianza / 60) * expectativa;
       // El apetito inversor depende del tamaño de la ciudad y de la rentabilidad, no de cuánto haya en venta:
       // así, cuando se construye mucho, la oferta sí presiona el precio a la baja.
       const demInversor = { familias: 0, pequenos: 0, grandes: 0, publico: 0 };
@@ -85,8 +101,7 @@ export const emparejamiento: Regla = {
 
       // 3. Alquiler de mercado: el resto de buscadores, si pueden pagarlo.
       const limiteAlquiler =
-        (rentaBuscador / 12) * f('acceso.esfuerzoAlquiler', ambito) +
-        f('acceso.ayudaAlquiler', ambito);
+        (rentaBuscador / 12) * f('acceso.esfuerzoAlquiler', ambito) + ayudaAlquiler(e, f, ambito);
       const demAlquiler = (buscan - compranEspera) * accesible(c.alquiler, limiteAlquiler);
       const enAlquiler = suma(c, 'ofAlquiler', true);
       const cabeAlquiler = enAlquiler * P.rotacionAlquiler;

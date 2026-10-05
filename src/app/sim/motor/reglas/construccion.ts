@@ -12,14 +12,30 @@ export const construccion: Regla = {
     const concesionNacional = f('construccion.concesion');
     const compraNacional = f('compra.publica');
 
+    // Cuanto más cargado va el sector, más cuesta construir (mano de obra, materiales, solares).
+    const enObra = e.ciudades.reduce(
+      (s, c) => s + c.ritmoObra + c.ritmoObraPublica + c.ritmoObraConcesion,
+      0,
+    );
+    const uso = enObra / Math.max(1, f('construccion.capacidad'));
+    e.costeObra = clamp(
+      Math.pow(uso / P.costeObra.usoBase, P.costeObra.exponente),
+      1,
+      P.costeObra.max,
+    );
+
     // Objetivo de cada ciudad; si entre todas superan la capacidad del sector, se reparte.
     const objetivos = e.ciudades.map((c) => {
-      const margen = clamp(Math.pow(c.precio / c.precioRef, 0.8), 0.5, 1.6);
+      const margen = clamp(Math.pow(c.precio / c.precioRef / e.costeObra, 0.8), 0.5, 1.6);
+      // Sin suelo urbanizable para unos años de obra, el promotor no encuentra dónde construir.
+      const hayDonde = clamp(c.suelo / (P.suelo.reserva * 52 * Math.max(1, c.ritmoObra)));
       const privada =
         c.obraBase *
         f('construccion.privada', { ciudad: c.id }) *
-        (0.5 + e.confianza / 120) *
-        margen;
+        // Con la confianza hundida casi nadie promueve: 0,2 a confianza 0, 1 a confianza 60.
+        Math.min(1.35, 0.2 + (0.8 * e.confianza) / 60) *
+        margen *
+        hayDonde;
       const cuota = c.espera / esperaTotal;
       return { privada, publica: publicaNacional * cuota, concesion: concesionNacional * cuota };
     });
@@ -33,6 +49,8 @@ export const construccion: Regla = {
       c.ritmoObraConcesion += (objetivos[k].concesion * escala - c.ritmoObraConcesion) / retraso;
 
       const n = c.ritmoObra;
+      // El planeamiento ordinario repone el suelo al ritmo de partida: solo se agota si se construye más.
+      c.suelo = Math.max(0, c.suelo + c.obraBase - n);
       const paraAlquiler =
         c.intencion.grandes > 0.5 ? n * P.repartoObra.grandes * P.obraParaAlquiler : 0;
       c.parque.familias.ofVenta += n * P.repartoObra.familias;
@@ -40,6 +58,7 @@ export const construccion: Regla = {
       c.parque.grandes.ofVenta += n * P.repartoObra.grandes - paraAlquiler;
       c.parque.grandes.ofAlquiler += paraAlquiler;
       c.parque.publico.ofAlquiler += c.ritmoObraPublica + c.ritmoObraConcesion;
+      c.concesion += c.ritmoObraConcesion;
 
       // Compra pública: como mucho el 2 % de lo que hay en venta cada semana, al precio de la ciudad.
       const enVenta = suma(c, 'ofVenta', true);

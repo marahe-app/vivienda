@@ -53,6 +53,20 @@ export function viviendas(c: Ciudad): number {
   return n;
 }
 
+/** Precio por debajo del cual no se vende: una parte del de partida o lo que costaría construir la casa, lo que sea mayor. */
+export const sueloPrecioDe = (c: Ciudad, e: Estado) =>
+  Math.max(
+    c.precioRef * P.sueloPrecio,
+    P.costeConstruccionM2 * P.superficieVenta * e.nivelPrecios * e.costeObra * P.descuentoUsada,
+  );
+
+/** Alquiler por debajo del cual no se alquila: una parte del de partida o el que da la rentabilidad mínima al precio actual. */
+export const sueloAlquilerDe = (c: Ciudad) =>
+  Math.max(
+    c.alquilerRef * P.sueloAlquiler,
+    (P.rentabilidadMin * c.precio * P.superficieAlquiler) / (12 * P.superficieVenta),
+  );
+
 /** Rentabilidad bruta del alquiler por m²: la vivienda media que se alquila es más pequeña que la que se vende. */
 export const rentabilidad = (alquiler: number, precio: number) =>
   ((alquiler / P.superficieAlquiler) * 12) / (precio / P.superficieVenta);
@@ -68,13 +82,20 @@ export function aniosFinanciables(
   return esfuerzo * anualidad * (1 + aval);
 }
 
+/** Parte de sus ingresos que dedica al alquiler quien busca piso hoy, descontada la ayuda pública (€/mes). */
+export const esfuerzoEntrada = (c: Ciudad, ayuda = 0) =>
+  Math.max(0, c.alquiler - ayuda) / ((c.renta * P.rentaBuscadores) / 12);
+
 /**
  * Presión de vivienda de una ciudad: 0 = ninguna, 1 = los umbrales de PARAMETROS.presion.
  * No se recorta en 1: cada componente puede llegar al doble, así una ciudad que empeora sigue sumando.
+ * El esfuerzo es la media entre el de quien entra hoy (alquiler de mercado menos la ayuda)
+ * y el de quien ya tiene contrato.
  */
-export function presion(c: Ciudad): number {
+export function presion(c: Ciudad, ayuda = 0): number {
   const u = P.presion;
-  const esfuerzo = c.alquiler / ((c.renta * P.rentaBuscadores) / 12);
+  const esfuerzo =
+    (esfuerzoEntrada(c, ayuda) + c.alquilerVivo / ((c.renta * P.rentaBuscadores) / 12)) / 2;
   const anios = c.precio / c.renta;
   const espera = c.espera / (hogares(c) + c.espera);
   const comp = (x: number) => clamp(x, 0, u.tope);
@@ -92,14 +113,14 @@ export interface PresionNacional {
   principales: number;
 }
 
-export function presionNacional(e: Estado): PresionNacional {
+export function presionNacional(e: Estado, ayuda = 0): PresionNacional {
   let sw = 0,
     sp = 0,
     swP = 0,
     spP = 0;
   for (const c of e.ciudades) {
     const h = hogares(c);
-    const p = presion(c);
+    const p = presion(c, ayuda);
     const w =
       h * (c.principal ? P.peso.principal : c.id === 'resto' ? P.peso.resto : P.peso.normal);
     sw += w;
@@ -118,7 +139,11 @@ export interface Indicadores {
   alojadas: number;
   aniosCompra: number;
   esfuerzoSmi: number;
+  /** Lo que se pide hoy por un piso en alquiler. */
   alquilerMercado: number;
+  /** Lo que pagan de media los inquilinos del sector privado. */
+  alquilerPagado: number;
+  /** Lo que pagan de media todos los inquilinos, incluido el parque público. */
   alquilerMedio: number;
   precioMedio: number;
   rentaMedia: number;
@@ -137,10 +162,13 @@ export interface Indicadores {
   vacias: number;
   inquilinos: number;
   presion: PresionNacional;
+  nivelPrecios: number;
+  costeObra: number;
   cumple: { alojadas: boolean; compra: boolean; alquiler: boolean };
 }
 
-export function indicadores(e: Estado, impuestoCompra: number): Indicadores {
+/** `ayuda` es la ayuda pública al alquiler en vigor (€/mes): se descuenta del esfuerzo de quien busca. */
+export function indicadores(e: Estado, impuestoCompra: number, ayuda = 0): Indicadores {
   const flujos = flujosVacios();
   const mercado = { familias: 0, pequenos: 0, grandes: 0, publico: 0 };
   const parque = { familias: 0, pequenos: 0, grandes: 0, publico: 0 };
@@ -151,6 +179,7 @@ export function indicadores(e: Estado, impuestoCompra: number): Indicadores {
     precio = 0,
     renta = 0,
     alqMercado = 0,
+    alqPagado = 0,
     crecAlq = 0,
     crecVenta = 0;
   let alqPriv = 0,
@@ -170,6 +199,7 @@ export function indicadores(e: Estado, impuestoCompra: number): Indicadores {
     alqPriv += priv;
     alqPub += c.parque.publico.alquilada;
     alqMercado += c.alquiler * priv;
+    alqPagado += c.alquilerVivo * priv;
     crecAlq += c.crecAlq * priv;
     ofAlquiler += suma(c, 'ofAlquiler');
     ofVenta += suma(c, 'ofVenta');
@@ -186,7 +216,8 @@ export function indicadores(e: Estado, impuestoCompra: number): Indicadores {
   }
 
   const alquilerMercado = alqMercado / alqPriv;
-  const alquilerMedio = (alqMercado + alqPub * e.smi * P.alquilerSocialPctSmi) / (alqPriv + alqPub);
+  const alquilerPagado = alqPagado / alqPriv;
+  const alquilerMedio = (alqPagado + alqPub * e.smi * P.alquilerSocialPctSmi) / (alqPriv + alqPub);
   const precioMedio = precio / h;
   const rentaMedia = renta / h;
   const alojadas = h / (h + espera);
@@ -200,6 +231,7 @@ export function indicadores(e: Estado, impuestoCompra: number): Indicadores {
     aniosCompra,
     esfuerzoSmi,
     alquilerMercado,
+    alquilerPagado,
     alquilerMedio,
     precioMedio,
     rentaMedia,
@@ -214,7 +246,9 @@ export function indicadores(e: Estado, impuestoCompra: number): Indicadores {
     enVenta,
     vacias,
     inquilinos: alqPriv,
-    presion: presionNacional(e),
+    presion: presionNacional(e, ayuda),
+    nivelPrecios: e.nivelPrecios,
+    costeObra: e.costeObra,
     cumple: {
       alojadas: alojadas >= P.objetivos.alojadas,
       compra: aniosCompra <= P.objetivos.aniosCompra,
@@ -229,7 +263,10 @@ export function contexto(i: Indicadores): Contexto {
     contratos: i.flujos.contratos,
     compras: i.flujos.compras,
     precioMedio: i.precioMedio,
-    alquilerMedio: i.alquilerMercado,
+    alquilerMedio: i.alquilerPagado,
+    nivelPrecios: i.nivelPrecios,
+    costeObra: i.costeObra,
+    rentaHogares: i.rentaMedia * i.hogares,
     inquilinos: i.inquilinos,
     vacias: i.vacias,
     parqueGrandes: i.parque.grandes,

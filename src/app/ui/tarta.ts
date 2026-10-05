@@ -48,7 +48,7 @@ const fecha = (semana: number) =>
       <h2>¿De quién es la vivienda?<app-fuente [ids]="fuentes" /></h2>
       <div class="conmutador" role="group" aria-label="Qué viviendas contar">
         <button [class.activo]="vista() === 'mercado'" (click)="vista.set('mercado')">
-          En el mercado
+          Alquiladas y en oferta
         </button>
         <button [class.activo]="vista() === 'parque'" (click)="vista.set('parque')">
           Todo el parque
@@ -98,11 +98,12 @@ const fecha = (semana: number) =>
       </ul>
     </div>
     <p class="nota">
-      {{
-        vista() === 'mercado'
-          ? 'Viviendas alquiladas o anunciadas en alquiler o venta.'
-          : 'Todas las viviendas, incluidas las habitadas por su dueño y las vacías.'
-      }}
+      @if (vista() === 'mercado') {
+        Viviendas ya alquiladas (con inquilino dentro) más las anunciadas en alquiler o venta. De
+        ellas, solo <b>{{ anunciadas() }}</b> están libres y en oferta ahora mismo.
+      } @else {
+        Todas las viviendas, incluidas las habitadas por su dueño y las vacías.
+      }
       Pulsa un color para filtrar el gráfico de abajo.
     </p>
 
@@ -130,6 +131,7 @@ const fecha = (semana: number) =>
       </div>
       <div class="cifra">
         <strong>{{ evolucion().actual }}</strong>
+        <span>anunciadas y sin ocupar</span>
         <span [class.sube]="evolucion().delta > 0" [class.baja]="evolucion().delta < 0">
           {{ evolucion().delta > 0 ? '▲ sube' : evolucion().delta < 0 ? '▼ baja' : '= igual' }}
           {{ evolucion().deltaTexto }} desde el inicio
@@ -305,6 +307,9 @@ const fecha = (semana: number) =>
       margin: 8px 0 0;
       font-size: 11px;
       color: var(--tinta-3);
+    }
+    .nota b {
+      color: var(--tinta-2);
     }
 
     .oferta {
@@ -498,7 +503,7 @@ export class Tarta {
     'emancipacion',
     'resultado',
   ];
-  protected readonly ayudaPersonas = `Déficit: familias en espera sin contar los ${compacto(P.jovenesLatentes)} hogares jóvenes que querrían emanciparse (supuesto del modelo). Personas: todas las familias en espera, a ${P.tamanoHogar.toLocaleString('es-ES')} personas por hogar. Línea discontinua, con su propia escala (eje derecho).`;
+  protected readonly ayudaPersonas = `Déficit: familias en espera sin contar los ${compacto(P.jovenesLatentes)} hogares jóvenes que querrían emanciparse ( ). Personas: todas las familias en espera, a ${P.tamanoHogar.toLocaleString('es-ES')} personas por hogar. Línea discontinua, con su propia escala (eje derecho).`;
   protected readonly vista = signal<'mercado' | 'parque'>('mercado');
   protected readonly sobre = signal<Propietario | null>(null);
   /** Propietario elegido en la tarta: filtra el gráfico de oferta. */
@@ -509,6 +514,12 @@ export class Tarta {
   protected readonly destacado = computed(() => this.sobre() ?? this.filtro());
   private readonly datos = computed(() => this.sim.ind()[this.vista()]);
   private readonly total = computed(() => PROPIETARIOS.reduce((s, o) => s + this.datos()[o], 0));
+
+  /** Viviendas anunciadas y sin ocupar: la misma cifra que encabeza el gráfico de oferta sin filtros. */
+  protected readonly anunciadas = computed(() => {
+    const ind = this.sim.ind();
+    return compacto(PROPIETARIOS.reduce((s, o) => s + ind.enAlquiler[o] + ind.enVenta[o], 0));
+  });
 
   protected readonly sectores = computed(() => {
     const total = this.total();

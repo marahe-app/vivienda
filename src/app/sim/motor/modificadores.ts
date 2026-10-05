@@ -1,4 +1,5 @@
 import { FACTORES, type DefFactor, type FactorId } from '../datos/factores';
+import { PARAMETROS as P } from '../datos/parametros';
 import type { Ambito, Estado, Modificador, Resolver } from '../tipos';
 
 /** Un modificador con ámbito solo cuenta cuando se consulta el factor para ese ámbito. */
@@ -8,15 +9,28 @@ export function aplica(m: Modificador, ambito?: Ambito): boolean {
   return true;
 }
 
-export function calcular(def: DefFactor, mods: Modificador[], ambito?: Ambito): number {
+/**
+ * Valor de un factor con sus modificadores. En los factores de comportamiento (`gradual`), una ley
+ * recién promulgada pesa poco y va ganando peso semana a semana hasta desplegarse del todo.
+ */
+export function calcular(
+  def: DefFactor,
+  mods: Modificador[],
+  ambito?: Ambito,
+  semana = Infinity,
+): number {
   let suma = def.base;
   let mult = 1;
   let tope = Infinity;
   let suelo = -Infinity;
   for (const m of mods) {
     if (!aplica(m, ambito)) continue;
-    if (m.op === 'suma') suma += m.valor;
-    else if (m.op === 'mult') mult *= Math.max(0, 1 + m.valor);
+    const peso =
+      def.gradual && m.desde !== undefined
+        ? Math.max(0, Math.min(1, (semana - m.desde) / P.semanasDespliegue))
+        : 1;
+    if (m.op === 'suma') suma += m.valor * peso;
+    else if (m.op === 'mult') mult *= Math.max(0, 1 + m.valor * peso);
     else if (m.op === 'tope') tope = Math.min(tope, m.valor);
     else suelo = Math.max(suelo, m.valor);
   }
@@ -35,5 +49,5 @@ export function crearResolver(e: Estado): Resolver {
     else porFactor.set(m.factor, [m]);
   }
   const vacio: Modificador[] = [];
-  return (id, ambito) => calcular(FACTORES[id], porFactor.get(id) ?? vacio, ambito);
+  return (id, ambito) => calcular(FACTORES[id], porFactor.get(id) ?? vacio, ambito, e.semana);
 }

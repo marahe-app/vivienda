@@ -3,7 +3,7 @@ import { SimService } from './sim.service';
 import type { Estado } from './tipos';
 
 /** Súbela cuando el Estado deje de ser compatible: las partidas de otra versión no se cargan. */
-const VERSION = 2;
+const VERSION = 4;
 const INDICE = 'vivienda.partidas';
 const clave = (id: string) => 'vivienda.partida.' + id;
 

@@ -332,7 +332,7 @@ export const FUENTES = {
     titulo: '',
     periodo: '',
     dato: 'Contratos de alquiler que el propietario no renueva',
-    nota: 'No hay estadística de no renovaciones. El modelo las hace crecer cuando el alquiler de mercado sube más que las rentas o cuando al propietario deja de compensarle alquilar.',
+    nota: 'No hay estadística de no renovaciones. El modelo las hace crecer cuando el alquiler de mercado se aleja del que paga el inquilino con contrato o cuando al propietario deja de compensarle alquilar.',
   },
   superficieVenta: {
     tipo: 'oficial',
@@ -438,7 +438,7 @@ export const FUENTES = {
     titulo: '',
     periodo: '',
     dato: 'Cada 1.000 M€ impresos suben la inflación 0,08 puntos durante dos años',
-    nota: 'Financiar gasto creando dinero es inflacionista, pero no hay una cifra publicada para España (el BCE lo prohíbe). La magnitud es una convención del juego. Imprimir también resta confianza a los inversores. La cartera vuelve a su presupuesto cada mes: si acaba en números rojos, la diferencia se imprime sola.',
+    nota: 'Financiar gasto creando dinero es inflacionista, pero no hay una cifra publicada para España (el BCE lo prohíbe). La magnitud es una convención del juego. Imprimir también resta confianza a los inversores. Los 1.000 M€ son euros de hoy. La cartera vuelve a su presupuesto cada mes: si acaba en números rojos, la diferencia pasa a deuda, que paga intereses, sube la tensión y resta confianza; imprimir es la forma de no endeudarse o de amortizar.',
   },
 
   // ── Leyes reales en las que se inspiran los decretos ─────────────────────
@@ -567,7 +567,7 @@ export const FUENTES = {
     titulo: '',
     periodo: '',
     dato: 'Índice de presión de 0 a 100 (puede pasar de 100)',
-    nota: 'Indicador propio de cada ciudad: 40 % el alquiler respecto a los ingresos de quien busca casa (100 = el 60 % de sus ingresos), 30 % los años de renta que cuesta comprar (100 = 12 años) y 30 % las familias sin casa (100 = el 15 % de los hogares). No tiene techo en 100: una situación peor sigue sumando.',
+    nota: 'Indicador propio de cada ciudad: 30 % el alquiler respecto a los ingresos de quien busca casa (100 = el 70 % de sus ingresos; cuenta a medias el alquiler de un piso que se anuncia hoy, descontadas las ayudas, y el que pagan los inquilinos con contrato), 20 % los años de renta que cuesta comprar (100 = 13 años) y 50 % las familias sin casa (100 = el 12 % de los hogares). No tiene techo en 100: una situación peor sigue sumando.',
   },
   tensionSocial: {
     tipo: 'supuesto',
@@ -575,7 +575,31 @@ export const FUENTES = {
     titulo: '',
     periodo: '',
     dato: 'Tensión social de 0 a 100',
-    nota: 'Sigue la presión de las ciudades ponderada por sus hogares, y nunca es menor que la presión media de las seis grandes áreas urbanas (Madrid, Barcelona, Valencia, Alicante, Sevilla y Málaga): una presión de 90 allí equivale a tensión 100 y cae el gobierno aunque el resto del país esté tranquilo. Suma además las familias expulsadas de su alquiler (un punto por cada 100 semanales por encima de las 1.000 actuales), la inflación por encima del 3,1 % (cuatro puntos por cada punto de IPC), los números rojos de la cartera y el enfado o alivio de cada ley. Se mueve despacio: tarda unos seis meses en reflejar un cambio.',
+    nota: 'Sigue la presión de las ciudades ponderada por sus hogares, y nunca es menor que la presión media de las seis grandes áreas urbanas (Madrid, Barcelona, Valencia, Alicante, Sevilla y Málaga): una presión de 90 allí equivale a tensión 100 y cae el gobierno aunque el resto del país esté tranquilo. Suma además las familias expulsadas de su alquiler (diez puntos cada vez que su proporción sobre los inquilinos dobla la de partida, hasta 40), la inflación por encima del 3,1 % (cinco puntos por cada punto de IPC), los números rojos de la cartera, la deuda (un punto por cada 10.000 M€), los propietarios (un punto por cada punto que el precio real de la vivienda caiga más de un 5 % desde su máximo reciente) y el enfado o alivio de cada ley. Se mueve despacio: tarda unos seis meses en reflejar un cambio.',
+  },
+  costeConstruccion: {
+    tipo: 'supuesto',
+    organismo: 'Modelo',
+    titulo: '',
+    periodo: '2025',
+    dato: '≈ 1.350 €/m² construir una vivienda, sin suelo',
+    nota: 'Coste de ejecución material más honorarios, licencias y gastos generales, según los índices de costes de construcción de 2025 (CYPE, Colegios de Arquitectos). El modelo no deja que el precio de la vivienda usada baje de tres cuartas partes de ese coste, actualizado con el IPC y con la carga del sector, ni que el alquiler baje de una rentabilidad bruta del 3,5 %. Las viviendas públicas rentan a la cartera el alquiler social menos 1.600 € al año de gestión y mantenimiento por vivienda.',
+  },
+  elecciones: {
+    tipo: 'supuesto',
+    organismo: 'Reglas del juego',
+    titulo: '',
+    periodo: '',
+    dato: 'Apoyo al gobierno de 0 a 100; elecciones cada cuatro años',
+    nota: 'El apoyo es 50 menos 0,7 puntos por cada punto de tensión por encima de 60, más 0,4 puntos por cada punto que la tensión haya bajado desde las elecciones anteriores, más hasta 10 puntos según la coyuntura económica. Con menos de 38 el gobierno pierde y la partida acaba. Es una convención del juego, no un modelo electoral.',
+  },
+  coyuntura: {
+    tipo: 'supuesto',
+    organismo: 'Modelo',
+    titulo: '',
+    periodo: '',
+    dato: 'Coyuntura económica de −1 (recesión) a 1 (expansión)',
+    nota: 'Cada semana la coyuntura conserva casi todo su valor anterior y recibe un pequeño choque al azar, de modo que salen ciclos de varios años que el jugador no controla. En su extremo mueve tres puntos la subida anual de las rentas, un 30 % las llegadas, un 20 % la emancipación, un punto el tipo de interés y 15 puntos la confianza. Cada partida nueva tiene su propia secuencia; una partida guardada conserva la suya.',
   },
   objetivos: {
     tipo: 'supuesto',

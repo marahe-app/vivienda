@@ -416,14 +416,14 @@ export class Mapa {
           dy,
           ancla,
           r: 9 + 24 * Math.sqrt(hogares(c) / 2.8e6),
-          color: this.tono(presion(c)),
+          color: this.tono(presion(c, this.sim.ayuda())),
         };
       }),
   );
 
   protected readonly resto = computed(() => {
     const c = this.sim.estado().ciudades.find((x) => x.id === RESTO)!;
-    return { color: this.tono(presion(c)) };
+    return { color: this.tono(presion(c, this.sim.ayuda())) };
   });
 
   protected readonly detalle = computed(() => {
@@ -431,14 +431,16 @@ export class Mapa {
     const c = this.sim.estado().ciudades.find((x) => x.id === id);
     if (!c) return null;
     const [x, y] = proyectar(c.lon, c.lat);
+    // Importes en euros de inicio, como en el resto de la interfaz.
+    const np = this.sim.estado().nivelPrecios;
     return {
       nombre: c.nombre,
       left: (x / ANCHO) * 100,
       top: (y / ALTO) * 100,
-      presion: Math.round(presion(c) * 100),
-      alquiler: eur(c.alquiler),
+      presion: Math.round(presion(c, this.sim.ayuda()) * 100),
+      alquiler: eur(c.alquiler / np),
       esfuerzo: pct(c.alquiler / (c.renta / 12), 0),
-      precio: eur(c.precio),
+      precio: eur(c.precio / np),
       anios: dec(c.precio / c.renta),
       espera: compacto(c.espera),
     };
